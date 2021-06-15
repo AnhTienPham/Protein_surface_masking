@@ -1,0 +1,1832 @@
+---
+title: "Protein_surface_masking"
+author: "Kenneth Matreyek and Anh Pham"
+date: "9/22/2020"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+rm(list = ls())
+library(tidyverse)
+library(RColorBrewer)
+library(dplyr)
+library(stringr)
+library(gridExtra)
+library(grid)
+library(ggrepel)
+library(zoo)
+```
+
+```{r import data}
+## PTEN and TPMT data from https://github.com/FowlerLab/VAMPseq
+pten <- read.delim(file = "data/PTEN.tsv", header = T, stringsAsFactors = F) %>% mutate(protein = "pten")
+tpmt <- read.delim(file = "data/TPMT.tsv", header = T, stringsAsFactors = F) %>% mutate(protein = "tpmt")
+
+## VKOR data from https://github.com/elifesciences-publications/VKOR
+vkorc1 <- read.csv(file = "data/VKORC1.csv", header = T, stringsAsFactors = F) %>% mutate(protein = "vkorc1", score = abundance_score) 
+
+## NUDT15 data from https://www.pnas.org/content/117/10/5394/tab-figures-data
+nudt15 <- read.delim(file = "data/NUDT15.tsv", header = T, stringsAsFactors = F) %>% mutate(protein = "nudt15", score = Average_abundance_score, variant = Variant)
+
+## combine the unscaled data just to see what we're working with
+combined_raw_data <- rbind(pten[,c("protein","variant","score")],tpmt[,c("protein","variant","score")],
+                           vkorc1[,c("protein","variant","score")],nudt15[,c("protein","variant","score")]) %>% filter(!is.na(score))
+
+## Plot the data
+initial_histograms <- ggplot() + theme_bw() + theme(panel.grid.minor = element_blank()) +
+  scale_x_continuous(expand = c(0,0)) +
+  geom_histogram(data = combined_raw_data, aes(x = score), binwidth = 0.1) +
+  facet_grid(rows = vars(protein))
+ggsave(file = "plots/initial_histograms.pdf", initial_histograms, height = 4, width = 3)
+initial_histograms
+```
+
+```{r Average score by start of PTEN}
+pten_score_by_start <- pten %>% 
+  group_by(start) %>% 
+  summarize(meanscore = mean(score, na.rm=TRUE)) %>% 
+  filter(!(start == "Z"))
+
+Average_score_by_start_plot <- 
+  ggplot() +
+  theme_bw(base_size = 20) + theme_bw() + 
+  geom_jitter(data = pten %>% filter(start != "Z"), aes(x = start, y = score), alpha = 0.1) +
+  geom_point(data = pten_score_by_start, aes(x=start, y=meanscore), shape = 95, size = 8)  + 
+  labs(title="MeanScore by StartGroup of PTEN")
+Average_score_by_start_plot
+
+ggsave(file = "plots/Average_score_by_start_PTEN.pdf", Average_score_by_start_plot, height = 4, width = 5)
+Average_score_by_start_plot
+```
+
+```{r Average score by start of TPMT}
+tpmt_score_by_start <- tpmt %>% 
+  group_by(start) %>% 
+  summarize(meanscore = mean(score, na.rm=TRUE)) %>% 
+  filter(!(start == "Z"))
+
+Average_score_by_start_plot <- ggplot(tpmt_score_by_start, aes(x=start, y=meanscore)) +
+  theme_bw(base_size = 20) + theme_bw() + 
+  geom_point()  + 
+  labs(title="MeanScore by StartGroup of TPMT")
+Average_score_by_start_plot
+
+ggsave(file = "plots/Average_score_by_start_TPMT.pdf", Average_score_by_start_plot, height = 4, width = 5)
+Average_score_by_start_plot
+```
+
+```{r Average score by start of VKORC1}
+vkorc1_score_by_start <- vkorc1 %>% 
+  group_by(start) %>% 
+  summarize(meanscore = mean(score, na.rm=TRUE)) %>% 
+  filter(!(start == "Z"))
+
+Average_score_by_start_plot <- ggplot(vkorc1_score_by_start, aes(x=start, y=meanscore)) +
+  theme_bw(base_size = 20) + theme_bw() + 
+  geom_point()  + 
+  labs(title="MeanScore by StartGroup of VKORC1")
+Average_score_by_start_plot
+
+ggsave(file = "plots/Average_score_by_start_VKORC1.pdf", Average_score_by_start_plot, height = 4, width = 5)
+Average_score_by_start_plot
+```
+
+```{r}
+# Frequency of start groups with high abundance score > 0.8
+vkorc1_score_start_larger0.8 <- vkorc1 %>% 
+  group_by(start) %>% 
+  summarize(meanscore = mean(score, na.rm=TRUE)) %>% 
+  filter(!(start == "Z") & (meanscore > 0.8))
+
+tpmt_score_start_larger0.8 <- tpmt %>% 
+  group_by(start) %>% 
+  summarize(meanscore = mean(score, na.rm=TRUE)) %>% 
+  filter(!(start == "Z") & (meanscore > 0.8))
+
+pten_score_start_larger0.8 <- pten %>% 
+  group_by(start) %>% 
+  summarize(meanscore = mean(score, na.rm=TRUE)) %>% 
+  filter(!(start == "Z") & (meanscore > 0.8))
+
+table_start_larger0.8 <-c(vkorc1_score_start_larger0.8$start, 
+                          tpmt_score_start_larger0.8$start,
+                          pten_score_start_larger0.8$start)
+aggregate(data.frame(frequency = table_start_larger0.8), 
+          list(start_group = table_start_larger0.8), length)
+```
+
+```{r Average score by start of VKORC1}
+vkorc1_score_by_start <- vkorc1 %>% 
+  group_by(start) %>% 
+  summarize(meanscore = mean(score, na.rm=TRUE)) %>% 
+  filter(!(start == "Z"))
+
+Average_score_by_start_plot <- ggplot(vkorc1_score_by_start, aes(x=start, y=meanscore)) +
+  theme_bw(base_size = 20) + theme_bw() + 
+  geom_point()  + 
+  labs(title="MeanScore by StartGroup of VKORC1")
+Average_score_by_start_plot
+
+ggsave(file = "plots/Average_score_by_start_VKORC1.pdf", Average_score_by_start_plot, height = 4, width = 5)
+Average_score_by_start_plot
+```
+
+```{r}
+# 10/04/2020
+# Plot 6 graphs comparing all 4 proteins by their start group amino acid property
+
+# Create property for each start amino acid
+nocharge <- c("N", "C", "Q", "M", "S", "T")
+positive <- c("R", "H", "K")
+negative <- c("D", "E")
+
+
+#Split the variant of nudt15 into start and stop
+nudt15$start <- substr(nudt15$Variant, 1, 1)
+nudt15$end <- substr(nudt15$Variant,nchar(nudt15$Variant),nchar(nudt15$Variant))
+
+# Sort each protein according to start group
+tpmt_score_by_start <- tpmt %>% 
+  group_by(start) %>% 
+  summarize(tpmt_score = mean(score, na.rm=TRUE)) %>% 
+  filter(!(start == "Z"))
+
+pten_score_by_start <- pten %>% 
+  group_by(start) %>% 
+  summarize(pten_score = mean(score, na.rm=TRUE)) %>% 
+  filter(!(start == "Z"))
+
+vkorc1_score_by_start <- vkorc1 %>% 
+  group_by(start) %>% 
+  summarize(vkorc1_score = mean(score, na.rm=TRUE)) %>% 
+  filter(!(start == "Z"))
+
+nudt15_score_by_start <- nudt15 %>% 
+  group_by(start) %>% 
+  summarize(nudt15_score = mean(Average_abundance_score, na.rm=TRUE)) %>% 
+  filter(!(start == "Z"))
+
+# Assign amino acid property to each protein
+tpmt_score_by_start$property <- ifelse(tpmt_score_by_start$start %in% nocharge, "polar no-charge", 
+                                       ifelse(tpmt_score_by_start$start %in% positive, "polar positive",
+                                              ifelse(tpmt_score_by_start$start %in% negative, "polar negative", "non-polar")))
+
+pten_score_by_start$property <- ifelse(pten_score_by_start$start %in% nocharge, "polar no-charge", 
+                                       ifelse(pten_score_by_start$start %in% positive, "polar positive",
+                                              ifelse(pten_score_by_start$start %in% negative, "polar negative", "non-polar")))
+
+vkorc1_score_by_start$property <- ifelse(vkorc1_score_by_start$start %in% nocharge, "polar no-charge", 
+                                       ifelse(vkorc1_score_by_start$start %in% positive, "polar positive",
+                                              ifelse(vkorc1_score_by_start$start %in% negative, "polar negative", "non-polar")))
+
+nudt15_score_by_start$property <- ifelse(nudt15_score_by_start$start %in% nocharge, "polar no-charge", 
+                                       ifelse(nudt15_score_by_start$start %in% positive, "polar positive",
+                                              ifelse(nudt15_score_by_start$start %in% negative, "polar negative", "non-polar")))
+
+# Assign the score of compairing protein to the compared protein
+tpmt_score_by_start$pten_score <- pten_score_by_start$pten_score
+tpmt_score_by_start$vkorc1_score <- vkorc1_score_by_start$vkorc1_score
+tpmt_score_by_start$nudt15_score <- nudt15_score_by_start$nudt15_score
+pten_score_by_start$vkorc1_score <- vkorc1_score_by_start$vkorc1_score
+pten_score_by_start$nudt15_score <- nudt15_score_by_start$nudt15_score
+vkorc1_score_by_start$nudt15_score <- nudt15_score_by_start$nudt15_score
+
+# Plot comparing PTEN and TPMT
+pten_tpmt_compare <- ggplot(tpmt_score_by_start, aes(x=pten_score, y=tpmt_score, color = property)) +
+  geom_point(alpha = 0.8)  + scale_x_continuous(limits = c(0,1)) + scale_y_continuous(limits = c(0,1)) +
+  theme_bw(base_size = 15) + theme(legend.position = "none", panel.grid.minor = element_blank()) + 
+  labs(title="PTEN with TPMT")  + geom_text_repel(aes(label = start)) +
+  labs(y = "TPMT abundance score",x="PTEN abundance score")
+ggsave(file = "plots/pten_tpmt_compare.pdf", pten_tpmt_compare, height = 4, width = 5)
+pten_tpmt_compare
+
+# Plot comparing VKORC1 and TPMT
+vkorc1_tpmt_compare <- ggplot(tpmt_score_by_start, aes(x=tpmt_score, y=vkorc1_score, color = property)) +
+  geom_point(alpha = 0.8)  + scale_x_continuous(limits = c(0,1)) + scale_y_continuous(limits = c(0,1)) +
+  theme_bw(base_size = 15) + theme(legend.position = "none", panel.grid.minor = element_blank()) + 
+  labs(title="VKORC1 with TPMT")  + geom_text_repel(aes(label = start)) +
+  labs(x = "TPMT abundance score",y="VKORC1 abundance score") 
+ggsave(file = "plots/vkorc1_tpmt_compare.pdf", vkorc1_tpmt_compare, height = 4, width = 5)
+vkorc1_tpmt_compare
+
+# Plot comparing NUDT15 and TPMT
+nudt15_tpmt_compare <- ggplot(tpmt_score_by_start, aes(x=tpmt_score, y=nudt15_score, color = property)) +
+  geom_point(alpha = 0.8)  + scale_x_continuous(limits = c(0,1)) + scale_y_continuous(limits = c(0,1)) +
+  theme_bw(base_size = 15) + theme(legend.position = "none", panel.grid.minor = element_blank()) + 
+  labs(title="NUDT15 with TPMT")  + geom_text_repel(aes(label = start)) +
+  labs(x = "TPMT abundance score",y="NUDT15 abundance score") 
+ggsave(file = "plots/nudt15_tpmt_compare.pdf", nudt15_tpmt_compare, height = 4, width = 5)
+nudt15_tpmt_compare
+
+# Plot comparing PTEN and VKORC1
+pten_vkorc1_compare <- ggplot(pten_score_by_start, aes(x=pten_score, y=vkorc1_score, color = property)) +
+  geom_point(alpha = 0.8)  + scale_x_continuous(limits = c(0,1)) + scale_y_continuous(limits = c(0,1)) +
+  theme_bw(base_size = 15) + theme(legend.position = "none", panel.grid.minor = element_blank()) + 
+  labs(title="PTEN with VKORC1")  + geom_text_repel(aes(label = start)) +
+  labs(y = "VKORC1 abundance score",x="PTEN abundance score") 
+ggsave(file = "plots/pten_vkorc1_compare.pdf", pten_vkorc1_compare, height = 4, width = 5)
+pten_vkorc1_compare
+
+# Plot comparing PTEN and NUDT15
+pten_nudt15_compare <- ggplot(pten_score_by_start, aes(x=pten_score, y=nudt15_score, color = property)) +
+  geom_point(alpha = 0.8)  + scale_x_continuous(limits = c(0,1)) + scale_y_continuous(limits = c(0,1)) +
+  theme_bw(base_size = 15) + theme(legend.position = "none", panel.grid.minor = element_blank()) + 
+  labs(title="PTEN with NUDT15")  + geom_text_repel(aes(label = start)) +
+  labs(y = "NUDT15 abundance score",x="PTEN abundance score") 
+ggsave(file = "plots/pten_nudt15_compare.pdf", pten_nudt15_compare, height = 4, width = 5)
+pten_nudt15_compare
+
+# Plot comparing NUDT15 and VKORC1
+vkorc1_nudt15_compare <- ggplot(vkorc1_score_by_start, aes(x=nudt15_score, y=vkorc1_score, color = property)) +
+  geom_point(alpha = 0.8)  + scale_x_continuous(limits = c(0,1)) + scale_y_continuous(limits = c(0,1)) +
+  theme_bw(base_size = 15) + theme(legend.position = "none", panel.grid.minor = element_blank()) + 
+  labs(title="NUDT15 and VKORC1")  + geom_text_repel(aes(label = start)) +
+  labs(y = "VKORC1 abundance score",x="NUDT15 abundance score") 
+ggsave(file = "plots/vkorc1_nudt15_compare.pdf", vkorc1_nudt15_compare, height = 4, width = 5)
+vkorc1_nudt15_compare
+
+
+## Arranging the plots in a grid
+blank <- grid.rect(gp=gpar(col="white"))
+
+plot_matrix <- grid.arrange(pten_tpmt_compare, blank, blank, pten_nudt15_compare, nudt15_tpmt_compare, blank, pten_vkorc1_compare, vkorc1_tpmt_compare, vkorc1_nudt15_compare, ncol=3, nrow = 3)
+ggsave(file = "plots/Plot_matrix.pdf", plot_matrix, height = 12, width = 12)
+```
+
+```{r}
+# 10/6/2020, 7 Plots of end group of cytoplasmic proteins with start group QSRTKEN
+
+# Cytoplasmic proteins by start group Q
+
+pten_by_start_Q <- pten %>% 
+  filter(start == "Q") %>% 
+  group_by(end) %>% 
+  summarize(score) %>% drop_na()
+
+tpmt_by_start_Q <- tpmt %>% 
+  filter(start == "Q") %>% 
+  group_by(end) %>% 
+  summarize(score) %>% drop_na()
+
+nudt15_by_start_Q <- nudt15 %>% 
+  filter(start == "Q") %>% 
+  group_by(end) %>% 
+  summarize(score) %>% drop_na()
+
+
+cytoplasmic_proteins_by_start_Q <- rbind(pten_by_start_Q, tpmt_by_start_Q, nudt15_by_start_Q)                                                                             
+cytoplasmic_proteins_by_start_Q_meanscore <- cytoplasmic_proteins_by_start_Q %>% 
+  group_by(end) %>% 
+  summarize(meanscore = mean(score, na.rm=TRUE))
+
+cytoplasmic_proteins_by_start_Q_plot <- 
+  ggplot() +
+  theme_bw(base_size = 20) + theme_bw() + 
+  geom_jitter(data = cytoplasmic_proteins_by_start_Q, aes(x = end, y = score), alpha = 0.1) +
+  geom_point(data = cytoplasmic_proteins_by_start_Q_meanscore, aes(x=end, y=meanscore), shape = 95, size = 8)  + 
+  labs(title="Cytoplasmic Proteins by Start Q") +
+  scale_y_continuous(limits = c(0,1.5))
+cytoplasmic_proteins_by_start_Q_plot
+
+# Cytoplasmic proteins by start group S
+
+pten_by_start_S <- pten %>% 
+  filter(start == "S") %>% 
+  group_by(end) %>% 
+  summarize(score) %>% drop_na()
+
+tpmt_by_start_S <- tpmt %>% 
+  filter(start == "S") %>% 
+  group_by(end) %>% 
+  summarize(score) %>% drop_na()
+
+nudt15_by_start_S <- nudt15 %>% 
+  filter(start == "S") %>% 
+  group_by(end) %>% 
+  summarize(score) %>% drop_na()
+
+
+cytoplasmic_proteins_by_start_S <- rbind(pten_by_start_S, tpmt_by_start_S, nudt15_by_start_S)                                                                             
+cytoplasmic_proteins_by_start_S_meanscore <- cytoplasmic_proteins_by_start_S %>% 
+  group_by(end) %>% 
+  summarize(meanscore = mean(score, na.rm=TRUE))
+
+cytoplasmic_proteins_by_start_S_plot <- 
+  ggplot() +
+  theme_bw(base_size = 20) + theme_bw() + 
+  geom_jitter(data = cytoplasmic_proteins_by_start_S, aes(x = end, y = score), alpha = 0.1) +
+  geom_point(data = cytoplasmic_proteins_by_start_S_meanscore, aes(x=end, y=meanscore), shape = 95, size = 8)  + 
+  labs(title="Cytoplasmic Proteins by Start S") +
+  scale_y_continuous(limits = c(0,1.5))
+cytoplasmic_proteins_by_start_S_plot
+
+# Cytoplasmic proteins by start group T
+
+pten_by_start_T <- pten %>% 
+  filter(start == "T") %>% 
+  group_by(end) %>% 
+  summarize(score) %>% drop_na()
+
+tpmt_by_start_T <- tpmt %>% 
+  filter(start == "T") %>% 
+  group_by(end) %>% 
+  summarize(score) %>% drop_na()
+
+nudt15_by_start_T <- nudt15 %>% 
+  filter(start == "T") %>% 
+  group_by(end) %>% 
+  summarize(score) %>% drop_na()
+
+
+cytoplasmic_proteins_by_start_T <- rbind(pten_by_start_T, tpmt_by_start_T, nudt15_by_start_T)                                                                             
+cytoplasmic_proteins_by_start_T_meanscore <- cytoplasmic_proteins_by_start_T %>% 
+  group_by(end) %>% 
+  summarize(meanscore = mean(score, na.rm=TRUE))
+
+cytoplasmic_proteins_by_start_T_plot <- 
+  ggplot() +
+  theme_bw(base_size = 20) + theme_bw() + 
+  geom_jitter(data = cytoplasmic_proteins_by_start_T, aes(x = end, y = score), alpha = 0.1) +
+  geom_point(data = cytoplasmic_proteins_by_start_T_meanscore, aes(x=end, y=meanscore), shape = 95, size = 8)  + 
+  labs(title="Cytoplasmic Proteins by Start T") +
+  scale_y_continuous(limits = c(0,1.5))
+cytoplasmic_proteins_by_start_T_plot
+
+# Cytoplasmic proteins by start group R
+
+pten_by_start_R <- pten %>% 
+  filter(start == "R") %>% 
+  group_by(end) %>% 
+  summarize(score) %>% drop_na()
+
+tpmt_by_start_R <- tpmt %>% 
+  filter(start == "R") %>% 
+  group_by(end) %>% 
+  summarize(score) %>% drop_na()
+
+nudt15_by_start_R <- nudt15 %>% 
+  filter(start == "R") %>% 
+  group_by(end) %>% 
+  summarize(score) %>% drop_na()
+
+
+cytoplasmic_proteins_by_start_R <- rbind(pten_by_start_R, tpmt_by_start_R, nudt15_by_start_R)                                                                             
+cytoplasmic_proteins_by_start_R_meanscore <- cytoplasmic_proteins_by_start_R %>% 
+  group_by(end) %>% 
+  summarize(meanscore = mean(score, na.rm=TRUE))
+
+cytoplasmic_proteins_by_start_R_plot <- 
+  ggplot() +
+  theme_bw(base_size = 20) + theme_bw() + 
+  geom_jitter(data = cytoplasmic_proteins_by_start_R, aes(x = end, y = score), alpha = 0.1) +
+  geom_point(data = cytoplasmic_proteins_by_start_R_meanscore, aes(x=end, y=meanscore), shape = 95, size = 8)  + 
+  labs(title="Cytoplasmic Proteins by Start R") +
+  scale_y_continuous(limits = c(0,1.5))
+cytoplasmic_proteins_by_start_R_plot
+
+# Cytoplasmic proteins by start group K
+
+pten_by_start_K <- pten %>% 
+  filter(start == "K") %>% 
+  group_by(end) %>% 
+  summarize(score) %>% drop_na()
+
+tpmt_by_start_K <- tpmt %>% 
+  filter(start == "K") %>% 
+  group_by(end) %>% 
+  summarize(score) %>% drop_na()
+
+nudt15_by_start_K <- nudt15 %>% 
+  filter(start == "K") %>% 
+  group_by(end) %>% 
+  summarize(score) %>% drop_na()
+
+
+cytoplasmic_proteins_by_start_K <- rbind(pten_by_start_K, tpmt_by_start_K, nudt15_by_start_K)                                                                             
+cytoplasmic_proteins_by_start_K_meanscore <- cytoplasmic_proteins_by_start_K %>% 
+  group_by(end) %>% 
+  summarize(meanscore = mean(score, na.rm=TRUE))
+
+cytoplasmic_proteins_by_start_K_plot <- 
+  ggplot() +
+  theme_bw(base_size = 20) + theme_bw() + 
+  geom_jitter(data = cytoplasmic_proteins_by_start_K, aes(x = end, y = score), alpha = 0.1) +
+  geom_point(data = cytoplasmic_proteins_by_start_K_meanscore, aes(x=end, y=meanscore), shape = 95, size = 8)  + 
+  labs(title="Cytoplasmic Proteins by Start K") +
+  scale_y_continuous(limits = c(0,1.5))
+cytoplasmic_proteins_by_start_K_plot
+
+# Cytoplasmic proteins by start group E
+
+pten_by_start_E <- pten %>% 
+  filter(start == "E") %>% 
+  group_by(end) %>% 
+  summarize(score) %>% drop_na()
+
+tpmt_by_start_E <- tpmt %>% 
+  filter(start == "E") %>% 
+  group_by(end) %>% 
+  summarize(score) %>% drop_na()
+
+nudt15_by_start_E <- nudt15 %>% 
+  filter(start == "E") %>% 
+  group_by(end) %>% 
+  summarize(score) %>% drop_na()
+
+
+cytoplasmic_proteins_by_start_E <- rbind(pten_by_start_E, tpmt_by_start_E, nudt15_by_start_E)                                                                             
+cytoplasmic_proteins_by_start_E_meanscore <- cytoplasmic_proteins_by_start_E %>% 
+  group_by(end) %>% 
+  summarize(meanscore = mean(score, na.rm=TRUE))
+
+cytoplasmic_proteins_by_start_E_plot <- 
+  ggplot() +
+  theme_bw(base_size = 20) + theme_bw() + 
+  geom_jitter(data = cytoplasmic_proteins_by_start_E, aes(x = end, y = score), alpha = 0.1) +
+  geom_point(data = cytoplasmic_proteins_by_start_E_meanscore, aes(x=end, y=meanscore), shape = 95, size = 8)  + 
+  labs(title="Cytoplasmic Proteins by Start E") +
+  scale_y_continuous(limits = c(0,1.5))
+cytoplasmic_proteins_by_start_E_plot
+
+# Cytoplasmic proteins by start group N
+
+pten_by_start_N <- pten %>% 
+  filter(start == "N") %>% 
+  group_by(end) %>% 
+  summarize(score) %>% drop_na()
+
+tpmt_by_start_N <- tpmt %>% 
+  filter(start == "N") %>% 
+  group_by(end) %>% 
+  summarize(score) %>% drop_na()
+
+nudt15_by_start_N <- nudt15 %>% 
+  filter(start == "N") %>% 
+  group_by(end) %>% 
+  summarize(score) %>% drop_na()
+
+
+cytoplasmic_proteins_by_start_N <- rbind(pten_by_start_N, tpmt_by_start_N, nudt15_by_start_N)                                                                             
+cytoplasmic_proteins_by_start_N_meanscore <- cytoplasmic_proteins_by_start_N %>% 
+  group_by(end) %>% 
+  summarize(meanscore = mean(score, na.rm=TRUE))
+
+cytoplasmic_proteins_by_start_N_plot <- 
+  ggplot() +
+  theme_bw(base_size = 20) + theme_bw() + 
+  geom_jitter(data = cytoplasmic_proteins_by_start_N, aes(x = end, y = score), alpha = 0.1) +
+  geom_point(data = cytoplasmic_proteins_by_start_N_meanscore, aes(x=end, y=meanscore), shape = 95, size = 8)  + 
+  labs(title="Cytoplasmic Proteins by Start N") +
+  scale_y_continuous(limits = c(0,1.5))
+cytoplasmic_proteins_by_start_N_plot
+
+## Arranging the 7 plots in a grid
+blanks <- grid.rect(gp=gpar(col="white"))
+plot_QSRTREN <- grid.arrange(cytoplasmic_proteins_by_start_Q_plot, cytoplasmic_proteins_by_start_S_plot, cytoplasmic_proteins_by_start_T_plot, cytoplasmic_proteins_by_start_R_plot, cytoplasmic_proteins_by_start_K_plot, cytoplasmic_proteins_by_start_E_plot, cytoplasmic_proteins_by_start_N_plot, ncol=7, nrow = 1)
+ggsave(file = "plots/Plot_QSRTREN.pdf", plot_QSRTREN, height = 6, width = 42)
+
+```
+
+```{r}
+# 10/18/2020
+# Density plot of synonymous and nonsense variation
+# PTEN synonymous and nonsense plot
+pten_synonymous <- pten %>% 
+  filter(!(start == "Z")) %>% 
+  filter(start == end) %>% 
+  summarize(score) %>% drop_na()
+
+pten_synonymous$mutate_property <- "synonymous"
+
+pten_nonsense <- pten %>% 
+  filter(!(start == "Z")) %>% 
+  filter(end == "X") %>% 
+  summarize(score) %>% drop_na()
+
+pten_nonsense$mutate_property <- "nonsense"
+
+pten_by_mutation <- rbind(pten_synonymous, pten_nonsense)
+
+Density_pten_plot <- ggplot(pten_by_mutation, aes(x=score, color=mutate_property)) +
+  theme_bw(base_size = 20) + theme_bw() + 
+  theme(legend.position = "none", panel.grid.minor = element_blank()) +
+  scale_x_continuous(breaks = c(seq(from = 0, to = 1.5, by = 0.25))) + 
+  geom_density() + 
+  labs(title="Density plot of pten") + 
+  geom_vline(aes(xintercept=0.7), color="black", linetype="dashed", size=1)
+Density_pten_plot
+
+# TPMT synonymous and nonsense plot
+tpmt_synonymous <- tpmt %>% 
+  filter(!(start == "Z")) %>% 
+  filter(start == end) %>% 
+  summarize(score) %>% drop_na()
+
+tpmt_synonymous$mutate_property <- "synonymous"
+
+tpmt_nonsense <- tpmt %>% 
+  filter(!(start == "Z")) %>% 
+  filter(end == "X") %>% 
+  summarize(score) %>% drop_na()
+
+tpmt_nonsense$mutate_property <- "nonsense"
+
+tpmt_by_mutation <- rbind(tpmt_synonymous, tpmt_nonsense)
+
+Density_tpmt_plot <- ggplot(tpmt_by_mutation, aes(x=score, color=mutate_property)) +
+  theme_bw(base_size = 20) + theme_bw() + 
+  theme(legend.position = "none", panel.grid.minor = element_blank()) +
+  scale_x_continuous(breaks = c(seq(from = -0.5, to = 1.5, by = 0.25))) + 
+  geom_density() + 
+  labs(title="Density plot of tpmt") + 
+  geom_vline(aes(xintercept=0.7), color="black", linetype="dashed", size=1)
+Density_tpmt_plot
+
+# VKORC1 synonymous and nonsense plot
+vkorc1_synonymous <- vkorc1 %>% 
+  filter(!(start == "Z")) %>% 
+  filter(start == end) %>% 
+  summarize(score) %>% drop_na()
+
+vkorc1_synonymous$mutate_property <- "synonymous"
+
+vkorc1_nonsense <- vkorc1 %>% 
+  filter(!(start == "Z")) %>% 
+  filter(end == "X") %>% 
+  summarize(score) %>% drop_na()
+
+vkorc1_nonsense$mutate_property <- "nonsense"
+
+vkorc1_by_mutation <- rbind(vkorc1_synonymous, vkorc1_nonsense)
+
+Density_vkorc1_plot <- ggplot(vkorc1_by_mutation, aes(x=score, color=mutate_property)) +
+  theme_bw(base_size = 20) + theme_bw() + 
+  theme(legend.position = "none", panel.grid.minor = element_blank()) +
+  scale_x_continuous(breaks = c(seq(from = -0.5, to = 1.5, by = 0.25))) + 
+  geom_density() + 
+  labs(title="Density plot of vkorc1") + 
+  geom_vline(aes(xintercept=0.7), color="black", linetype="dashed", size=1)
+Density_vkorc1_plot
+
+## Arranging the 3 plots in a grid
+blank <- grid.rect(gp=gpar(col="white"))
+plot_synonymous_nonsense <- grid.arrange(Density_pten_plot, Density_tpmt_plot, Density_vkorc1_plot, ncol=1, nrow=3)
+ggsave(file = "plots/Plot_synonymous_nonsense.pdf", plot_synonymous_nonsense, height = 6, width = 5)
+```
+
+```{r}
+## 10/20/20 KAM
+## 10/22/20 Anh, add vkorc1 and modify nudet15
+## 10/25/20 update confidence interval for nudt15
+## Figure out what threshold value 95% of the synonymous variant values are above
+
+quantile(pten_synonymous$score, 0.05)
+quantile(tpmt_synonymous$score, 0.05)
+quantile(vkorc1_synonymous$score, 0.05)
+
+## Indeed each cutoff value is around 0.7, and slightly varies for each protein. Also, based on how the library was constructed, there were no / very little synonymous variants made for NUDT15. Since the cutoff threshold are so similar for each protein, we can use a cutoff value of the median (tpmt) for the NUDT15 cutoff value for now.
+
+#Establish upper and lower confidence interval for nudt15 
+nudt15$lower_ci <- nudt15$Average_abundance_score - nudt15$SD* 1.96 #nudt15$Average_abundance_score - nudt15$SD*0.975*nudt15$Average_abundance_score 
+nudt15$upper_ci <- nudt15$Average_abundance_score + nudt15$SD* 1.96 #nudt15$Average_abundance_score + nudt15$SD*0.975*nudt15$Average_abundance_score
+
+## I did this for PTEN and TPMT. We can also do this for VKORC1, and NUDT15
+pten_abundant_missense <- pten %>% filter(lower_ci >= quantile(pten_synonymous$score, 0.05) & class == "missense") %>% mutate(tolerated = 1, count = 1)
+pten_unstable_missense <- pten %>% filter(upper_ci <= quantile(pten_synonymous$score, 0.05) & class == "missense") %>% mutate(tolerated = 0, count = 1)
+tpmt_abundant_missense <- tpmt %>% filter(lower_ci >= quantile(tpmt_synonymous$score, 0.05) & class == "missense") %>% mutate(tolerated = 1, count = 1)
+tpmt_unstable_missense <- tpmt %>% filter(upper_ci <= quantile(tpmt_synonymous$score, 0.05) & class == "missense") %>% mutate(tolerated = 0, count = 1)
+vkorc1_abundant_missense <- vkorc1 %>% filter(abundance_lower_ci >= quantile(vkorc1_synonymous$score, 0.05) & class == "missense") %>% mutate(tolerated = 1, count = 1)
+vkorc1_unstable_missense <- vkorc1 %>% filter(abundance_upper_ci <= quantile(vkorc1_synonymous$score, 0.05) & class == "missense") %>% mutate(tolerated = 0, count = 1)
+nudt15_abundant_missense <- nudt15 %>% filter(lower_ci >= quantile(tpmt_synonymous$score, 0.05) & Info == "missense") %>% mutate(tolerated = 1, count = 1)
+nudt15_unstable_missense <- nudt15 %>% filter(upper_ci <= quantile(tpmt_synonymous$score, 0.05) & Info == "missense") %>% mutate(tolerated = 0, count = 1)
+
+#Modify nudt15 to make column the same for recombination
+nudt15_abundant_missense$variant <- nudt15_abundant_missense$Variant
+nudt15_abundant_missense$position <- nudt15_abundant_missense$Variant_position
+nudt15_abundant_missense$class <- nudt15_abundant_missense$Info
+nudt15_unstable_missense$variant <- nudt15_unstable_missense$Variant
+nudt15_unstable_missense$position <- nudt15_unstable_missense$Variant_position
+nudt15_unstable_missense$class <- nudt15_unstable_missense$Info
+
+high_conf_missense <- rbind(pten_abundant_missense[,c("variant","position","start","end","tolerated","count")],
+                            pten_unstable_missense[,c("variant","position","start","end","tolerated","count")],
+                            tpmt_abundant_missense[,c("variant","position","start","end","tolerated","count")],
+                            tpmt_unstable_missense[,c("variant","position","start","end","tolerated","count")],
+                            vkorc1_abundant_missense[,c("variant","position","start","end","tolerated","count")],
+                            vkorc1_unstable_missense[,c("variant","position","start","end","tolerated","count")],
+                            nudt15_abundant_missense[,c("variant","position","start","end","tolerated","count")],
+                            nudt15_unstable_missense[,c("variant","position","start","end","tolerated","count")])
+
+high_conf_missense_summary <- high_conf_missense %>% group_by(start, end) %>% summarize(tolerated = sum(tolerated), count = sum(count))
+high_conf_missense_summary$pct_tolerated <- round(high_conf_missense_summary$tolerated / high_conf_missense_summary$count * 100,2)
+
+
+## Making a blank data frame with every start and end combination. (Yes, I know doing this for-loop is pretty roundabout)
+amino_acids <- unique(high_conf_missense_summary$start)
+summary_dataframe <- data.frame(start = rep(NA,length(amino_acids)^2), end = rep(NA,length(amino_acids)^2))
+
+counter <- 0
+for(x in 1:length(amino_acids)){
+  for(y in 1:length(amino_acids)){
+    counter <- counter + 1
+    summary_dataframe$start[counter] <- amino_acids[x]
+    summary_dataframe$end[counter] <- amino_acids[y]
+  }
+}
+
+## Now add the actualy data into the pre-populated data frame
+summary_dataframe <- merge(summary_dataframe, high_conf_missense_summary, by = c("start","end"), all.x = T)
+
+## Determine the order in which you want to display the amino acids
+amino_acid_factors <- c("G","S","T","C","A","M","W","Y","F","L","I","V","D","E","N","Q","H","K","R","P")
+
+Tolerated_substitution_heatmap <- ggplot() + geom_tile(data  = summary_dataframe, aes(x = factor(start, levels = amino_acid_factors), y = factor(end, levels = amino_acid_factors), fill = pct_tolerated)) + scale_fill_gradient2(low = "white", mid = "grey70", high = "red", na.value = "black", midpoint = 70) + labs(x = "Original amino acid", y = "Mutant amino acid")
+ggsave(file = "plots/Tolerated_substitution_heatmap.pdf", Tolerated_substitution_heatmap, height = 4, width = 5.5)
+
+```
+
+``````{r}
+## 11/2/2020
+## Create heat map for pten using only surface residues from 2 data
+pten <- read.delim(file = "data/PTEN.tsv", header = T, stringsAsFactors = F)
+pten_surface_residue_1 <- read.csv(file = "data/pten_surfaceresidues1.csv", header = F, stringsAsFactors = F)
+pten_surface_residue_2 <- read.csv(file = "data/pten_surfaceresidues2.csv", header = F, stringsAsFactors = F)  
+
+names(pten_surface_residue_1)[1:1] <- "raw"
+pten_surface_residue_1 <- pten_surface_residue_1 %>% 
+  separate(raw,c("position","residue")) %>%
+  group_by(position)
+names(pten_surface_residue_2)[1:1] <- "raw"
+pten_surface_residue_2 <- pten_surface_residue_2 %>% 
+  separate(raw,c("position","residue")) %>% 
+  group_by(position)
+
+## Adding in a line here to figure out what the differences are between the two surface residue lists
+surface_position_comparison <- merge(data.frame("position" = as.numeric(unique(pten_surface_residue_1$position)), "method1" = 1),
+      data.frame("position" = as.numeric(unique(pten_surface_residue_2$position)), "method2" = 1), by = "position", all = T)
+
+paste("select method1_only, resi",gsub(", ","+",toString((surface_position_comparison %>% filter(method1 == 1 & is.na(method2)))$position)))
+paste("select method2_only, resi",gsub(", ","+",toString((surface_position_comparison %>% filter(method2 == 1 & is.na(method1)))$position)))
+paste("select method2, resi",gsub(", ","+",toString((surface_position_comparison %>% filter(method2 == 1))$position)))
+paste("create method2_sidechain, sidechain and resi",gsub(", ","+",toString((surface_position_comparison %>% filter(method2 == 1))$position)))
+paste("create method2_internal, sidechain and resi",gsub(", ","+",toString(seq(1,403)[!(seq(1,403) %in% (surface_position_comparison %>% filter(method2 == 1))$position)])))
+
+## Continuing your script to make the heatmaps
+pten1 <- pten %>% 
+  filter(position %in% pten_surface_residue_1$position) %>%
+  filter(class == "synonymous") %>% 
+  drop_na(lower_ci, upper_ci)
+
+pten2 <- pten %>% 
+  filter(position %in% pten_surface_residue_2$position) %>%
+  filter(class == "synonymous") %>% 
+  drop_na(lower_ci, upper_ci)
+
+pten1_abundant_missense <- pten %>% filter(lower_ci >= quantile(pten1$score, 0.05) & class == "missense") %>% mutate(tolerated = 1, count = 1)
+pten1_unstable_missense <- pten %>% filter(upper_ci <= quantile(pten1$score, 0.05) & class == "missense") %>% mutate(tolerated = 0, count = 1)
+pten2_abundant_missense <- pten %>% filter(lower_ci >= quantile(pten2$score, 0.05) & class == "missense") %>% mutate(tolerated = 1, count = 1)
+pten2_unstable_missense <- pten %>% filter(upper_ci <= quantile(pten2$score, 0.05) & class == "missense") %>% mutate(tolerated = 0, count = 1)
+
+pten1_missense <- rbind(pten1_abundant_missense[,c("variant","position","start","end","tolerated","count")],
+                            pten1_unstable_missense[,c("variant","position","start","end","tolerated","count")])
+pten2_missense <- rbind(pten2_abundant_missense[,c("variant","position","start","end","tolerated","count")],
+                        pten2_unstable_missense[,c("variant","position","start","end","tolerated","count")])
+
+pten1_missense_summary <- pten1_missense %>%
+  group_by(start, end) %>% 
+  summarize(tolerated = sum(tolerated), count = sum(count))
+
+pten2_missense_summary <- pten2_missense %>%
+  group_by(start, end) %>% 
+  summarize(tolerated = sum(tolerated), count = sum(count))
+
+pten1_missense_summary$pct_tolerated <- round(pten1_missense_summary$tolerated / pten1_missense_summary$count * 100,2)
+pten2_missense_summary$pct_tolerated <- round(pten2_missense_summary$tolerated / pten2_missense_summary$count * 100,2)
+
+amino_acids1 <- unique(pten1_missense_summary$start)
+pten1_dataframe <- data.frame(start = rep(NA,length(amino_acids1)^2), end = rep(NA,length(amino_acids1)^2))
+amino_acids2 <- unique(pten2_missense_summary$start)
+pten2_dataframe <- data.frame(start = rep(NA,length(amino_acids2)^2), end = rep(NA,length(amino_acids2)^2))
+
+counter <- 0
+for(x in 1:length(amino_acids1)){
+  for(y in 1:length(amino_acids1)){
+    counter <- counter + 1
+    pten1_dataframe$start[counter] <- amino_acids1[x]
+    pten1_dataframe$end[counter] <- amino_acids1[y]
+  }
+}
+
+counter <- 0
+for(x in 1:length(amino_acids2)){
+  for(y in 1:length(amino_acids2)){
+    counter <- counter + 1
+    pten2_dataframe$start[counter] <- amino_acids2[x]
+    pten2_dataframe$end[counter] <- amino_acids2[y]
+  }
+}
+
+pten1_dataframe <- merge(pten1_dataframe, pten1_missense_summary, by = c("start","end"), all.x = T)
+pten2_dataframe <- merge(pten2_dataframe, pten2_missense_summary, by = c("start","end"), all.x = T)
+
+amino_acid_factors <- c("G","S","T","C","A","M","W","Y","F","L","I","V","D","E","N","Q","H","K","R","P")
+
+Pten1_tolerated_substitution_heatmap <- ggplot() + 
+  geom_tile(data  = pten1_dataframe, aes(x = factor(start, levels = amino_acid_factors), y = factor(end, levels = amino_acid_factors), fill = pct_tolerated)) + 
+  scale_fill_gradient2(low = "white", mid = "grey70", high = "red", na.value = "black", midpoint = 70) + 
+  labs(x = "Original amino acid", y = "Mutant amino acid")
+
+Pten2_tolerated_substitution_heatmap <- ggplot() + 
+  geom_tile(data  = pten2_dataframe, aes(x = factor(start, levels = amino_acid_factors), y = factor(end, levels = amino_acid_factors), fill = pct_tolerated)) + 
+  geom_text(data  = pten2_dataframe, aes(x = factor(start, levels = amino_acid_factors), y = factor(end, levels = amino_acid_factors), label = count), size = 2) + 
+  scale_fill_gradient2(low = "white", mid = "grey70", high = "red", na.value = "black", midpoint = 70) + 
+  labs(x = "Original amino acid", y = "Mutant amino acid")
+
+ggsave(file = "plots/Pten1_tolerated_substitution_heatmap.pdf", Pten1_tolerated_substitution_heatmap, height = 4, width = 5.5)
+ggsave(file = "plots/Pten2_tolerated_substitution_heatmap.pdf", Pten2_tolerated_substitution_heatmap, height = 4, width = 5.5)
+
+```
+
+````{r}
+## 11/5/2020
+## Create heat map for tpmt, nudt15, vkorc1 using only surface residues
+tpmt_surface_residue <- read.csv(file = "data/tpmt_surfaceresidues.csv", header = F, stringsAsFactors = F)
+nudt15_surface_residue <- read.csv(file = "data/nudt15_surfaceresidues.csv", header = F, stringsAsFactors = F)
+vkorc1_surface_residue <- read.csv(file = "data/vkorc1_surfaceresidues_correctsequence.csv", header = F, stringsAsFactors = F)
+
+nudt15$start <- substr(nudt15$Variant, 1, 1)
+nudt15$end <- substr(nudt15$Variant,nchar(nudt15$Variant),nchar(nudt15$Variant))
+nudt15$lower_ci <- nudt15$Average_abundance_score - nudt15$SD* 1.96
+nudt15$upper_ci <- nudt15$Average_abundance_score + nudt15$SD* 1.96
+
+names(tpmt_surface_residue)[1:1] <- "raw"
+tpmt_surface_residue <- tpmt_surface_residue %>% 
+  separate(raw,c("position","residue")) %>%
+  group_by(position)
+
+names(nudt15_surface_residue)[1:1] <- "raw"
+nudt15_surface_residue <- nudt15_surface_residue %>% 
+  separate(raw,c("position","residue")) %>% 
+  group_by(position)
+
+names(vkorc1_surface_residue)[1:1] <- "raw"
+vkorc1_surface_residue <- vkorc1_surface_residue %>% 
+  separate(raw,c("position","residue")) %>% 
+  group_by(position)
+
+tpmt_sfr <- tpmt %>% 
+  filter(position %in% tpmt_surface_residue$position) %>%
+  filter(class == "synonymous") %>% 
+  drop_na(lower_ci, upper_ci)
+
+nudt15_sfr <- nudt15 %>% 
+  filter(Variant_position %in% nudt15_surface_residue$position) %>%
+  drop_na(lower_ci, upper_ci)
+
+vkorc1_sfr <- vkorc1 %>% 
+  filter(position %in% vkorc1_surface_residue$position) %>%
+  filter(class == "synonymous") %>% 
+  drop_na(abundance_lower_ci, abundance_upper_ci)
+
+tpmt_sfr_abundant_missense <- tpmt %>% filter(lower_ci >= quantile(tpmt_sfr$score, 0.05) & class == "missense") %>% mutate(tolerated = 1, count = 1)
+tpmt_sfr_unstable_missense <- tpmt %>% filter(upper_ci <= quantile(tpmt_sfr$score, 0.05) & class == "missense") %>% mutate(tolerated = 0, count = 1)
+nudt15_sfr_abundant_missense <- nudt15 %>% filter(lower_ci >= quantile(tpmt_sfr$score, 0.05)) %>% mutate(tolerated = 1, count = 1)
+nudt15_sfr_unstable_missense <- nudt15 %>% filter(upper_ci <= quantile(tpmt_sfr$score, 0.05)) %>% mutate(tolerated = 0, count = 1)
+vkorc1_sfr_abundant_missense <- vkorc1 %>% filter(abundance_lower_ci >= quantile(vkorc1_sfr$score, 0.05) & class == "missense") %>% mutate(tolerated = 1, count = 1)
+vkorc1_sfr_unstable_missense <- vkorc1 %>% filter(abundance_upper_ci <= quantile(vkorc1_sfr$score, 0.05) & class == "missense") %>% mutate(tolerated = 0, count = 1)
+
+nudt15_sfr_abundant_missense$variant <- nudt15_sfr_abundant_missense$Variant
+nudt15_sfr_abundant_missense$position <- nudt15_sfr_abundant_missense$Variant_position
+nudt15_sfr_abundant_missense$class <- nudt15_sfr_abundant_missense$Info
+nudt15_sfr_unstable_missense$variant <- nudt15_sfr_unstable_missense$Variant
+nudt15_sfr_unstable_missense$position <- nudt15_sfr_unstable_missense$Variant_position
+nudt15_sfr_unstable_missense$class <- nudt15_sfr_unstable_missense$Info
+
+tpmt_sfr_missense <- rbind(tpmt_sfr_abundant_missense[,c("variant","position","start","end","tolerated","count")],
+                           tpmt_sfr_unstable_missense[,c("variant","position","start","end","tolerated","count")])
+nudt15_sfr_missense <- rbind(nudt15_sfr_abundant_missense[,c("variant","position","start","end","tolerated","count")],
+                             nudt15_sfr_unstable_missense[,c("variant","position","start","end","tolerated","count")])
+vkorc1_sfr_missense <- rbind(vkorc1_sfr_abundant_missense[,c("variant","position","start","end","tolerated","count")],
+                             vkorc1_sfr_unstable_missense[,c("variant","position","start","end","tolerated","count")])
+
+tpmt_sfr_missense_summary <- tpmt_sfr_missense %>%
+  group_by(start, end) %>% 
+  summarize(tolerated = sum(tolerated), count = sum(count))
+nudt15_sfr_missense_summary <- nudt15_sfr_missense %>%
+  group_by(start, end) %>% 
+  summarize(tolerated = sum(tolerated), count = sum(count))
+vkorc1_sfr_missense_summary <- vkorc1_sfr_missense %>%
+  group_by(start, end) %>% 
+  summarize(tolerated = sum(tolerated), count = sum(count))
+
+tpmt_sfr_missense_summary$pct_tolerated <- round(tpmt_sfr_missense_summary$tolerated / tpmt_sfr_missense_summary$count * 100,2)
+nudt15_sfr_missense_summary$pct_tolerated <- round(nudt15_sfr_missense_summary$tolerated / nudt15_sfr_missense_summary$count * 100,2)
+vkorc1_sfr_missense_summary$pct_tolerated <- round(vkorc1_sfr_missense_summary$tolerated / vkorc1_sfr_missense_summary$count * 100,2)
+
+amino_acids1 <- unique(tpmt_sfr_missense_summary$start)
+tpmt_sfr_dataframe <- data.frame(start = rep(NA,length(amino_acids1)^2), end = rep(NA,length(amino_acids1)^2))
+amino_acids2 <- unique(nudt15_sfr_missense_summary$start)
+nudt15_sfr_dataframe <- data.frame(start = rep(NA,length(amino_acids2)^2), end = rep(NA,length(amino_acids2)^2))
+amino_acids3 <- unique(vkorc1_sfr_missense_summary$start)
+vkorc1_sfr_dataframe <- data.frame(start = rep(NA,length(amino_acids3)^2), end = rep(NA,length(amino_acids3)^2))
+
+counter <- 0
+for(x in 1:length(amino_acids1)){
+  for(y in 1:length(amino_acids1)){
+    counter <- counter + 1
+    tpmt_sfr_dataframe$start[counter] <- amino_acids1[x]
+    tpmt_sfr_dataframe$end[counter] <- amino_acids1[y]
+  }
+}
+counter <- 0
+for(x in 1:length(amino_acids2)){
+  for(y in 1:length(amino_acids2)){
+    counter <- counter + 1
+    nudt15_sfr_dataframe$start[counter] <- amino_acids2[x]
+    nudt15_sfr_dataframe$end[counter] <- amino_acids2[y]
+  }
+}
+counter <- 0
+for(x in 1:length(amino_acids3)){
+  for(y in 1:length(amino_acids3)){
+    counter <- counter + 1
+    vkorc1_sfr_dataframe$start[counter] <- amino_acids3[x]
+    vkorc1_sfr_dataframe$end[counter] <- amino_acids3[y]
+  }
+}
+
+tpmt_sfr_dataframe <- merge(tpmt_sfr_dataframe, tpmt_sfr_missense_summary, by = c("start","end"), all.x = T)
+nudt15_sfr_dataframe <- merge(nudt15_sfr_dataframe, nudt15_sfr_missense_summary, by = c("start","end"), all.x = T)
+vkorc1_sfr_dataframe <- merge(vkorc1_sfr_dataframe, vkorc1_sfr_missense_summary, by = c("start","end"), all.x = T)
+
+amino_acid_factors <- c("G","S","T","C","A","M","W","Y","F","L","I","V","D","E","N","Q","H","K","R","P")
+
+tpmt_sfr_tolerated_substitution_heatmap <- ggplot() + 
+  geom_tile(data  = tpmt_sfr_dataframe, aes(x = factor(start, levels = amino_acid_factors), y = factor(end, levels = amino_acid_factors), fill = pct_tolerated)) + 
+  geom_text(data  = tpmt_sfr_dataframe, aes(x = factor(start, levels = amino_acid_factors), y = factor(end, levels = amino_acid_factors), label = count), size = 2) + 
+  scale_fill_gradient2(low = "white", mid = "grey70", high = "red", na.value = "black", midpoint = 70) + 
+  labs(x = "Original amino acid", y = "Mutant amino acid")
+nudt15_sfr_tolerated_substitution_heatmap <- ggplot() + 
+  geom_tile(data  = nudt15_sfr_dataframe, aes(x = factor(start, levels = amino_acid_factors), y = factor(end, levels = amino_acid_factors), fill = pct_tolerated)) + 
+  geom_text(data  = nudt15_sfr_dataframe, aes(x = factor(start, levels = amino_acid_factors), y = factor(end, levels = amino_acid_factors), label = count), size = 2) + 
+  scale_fill_gradient2(low = "white", mid = "grey70", high = "red", na.value = "black", midpoint = 70) + 
+  labs(x = "Original amino acid", y = "Mutant amino acid")
+vkorc1_sfr_tolerated_substitution_heatmap <- ggplot() + 
+  geom_tile(data  = vkorc1_sfr_dataframe, aes(x = factor(start, levels = amino_acid_factors), y = factor(end, levels = amino_acid_factors), fill = pct_tolerated)) + 
+  geom_text(data  = vkorc1_sfr_dataframe, aes(x = factor(start, levels = amino_acid_factors), y = factor(end, levels = amino_acid_factors), label = count), size = 2) + 
+  scale_fill_gradient2(low = "white", mid = "grey70", high = "red", na.value = "black", midpoint = 70) + 
+  labs(x = "Original amino acid", y = "Mutant amino acid")
+ggsave(file = "plots/TPMT_tolerated_substitution_heatmap.pdf", tpmt_sfr_tolerated_substitution_heatmap, height = 4, width = 5.5)
+ggsave(file = "plots/NUDT15_tolerated_substitution_heatmap.pdf", nudt15_sfr_tolerated_substitution_heatmap, height = 4, width = 5.5)
+ggsave(file = "plots/VKORC1_tolerated_substitution_heatmap.pdf", vkorc1_sfr_tolerated_substitution_heatmap, height = 4, width = 5.5)
+
+## 11/6 Merging all of the datasets into a single surface residue mutational tolerance heatmap
+
+combined_surface_tolerance_dataframe <- rbind(pten2_dataframe, tpmt_sfr_dataframe, nudt15_sfr_dataframe, vkorc1_sfr_dataframe) %>% group_by(start, end) %>% summarize(tolerated = sum(tolerated, na.rm = T), count = sum(count, na.rm = T), .groups = "drop") %>% mutate(pct_tolerated = tolerated/count*100)
+
+combined_sfr_tolerated_substitution_heatmap <- ggplot() + 
+  geom_tile(data  = combined_surface_tolerance_dataframe, aes(x = factor(start, levels = amino_acid_factors), y = factor(end, levels = amino_acid_factors), fill = pct_tolerated)) + 
+  geom_text(data  = combined_surface_tolerance_dataframe, aes(x = factor(start, levels = amino_acid_factors), y = factor(end, levels = amino_acid_factors), label = count), size = 2) + 
+  scale_fill_gradient2(low = "white", mid = "grey70", high = "red", na.value = "black", midpoint = 70) + 
+  labs(x = "Original amino acid", y = "Mutant amino acid")
+ggsave(file = "plots/Combined_tolerated_substitution_heatmap.pdf", combined_sfr_tolerated_substitution_heatmap, height = 4, width = 5.5)
+ggsave(file = "plots/Combined_tolerated_substitution_heatmap.png", combined_sfr_tolerated_substitution_heatmap, height = 4, width = 5.5)
+
+
+````
+
+```{r}
+## 11/16/2020
+## Create 3 plots that compare PTEN %tolerated to grantham score,
+## hydrophobic pH 7 and weight size
+
+pten <- read.delim(file = "data/PTEN.tsv", header = T, stringsAsFactors = F)
+pten_surface_residue <- read.csv(file = "data/pten_surfaceresidues2.csv", header = F, stringsAsFactors = F) 
+amino_acid_chart <- read.csv(file = "data/Amino_acid_chart - Chart.csv", header = T, stringsAsFactors = F)
+grantham_table <- read.delim(file = "data/grantham_matrix.tsv", header = T, stringsAsFactors = F)
+
+# Extract PTEN surface residues and %tolerated
+
+names(pten_surface_residue)[1:1] <- "raw"
+pten_surface_residue <- pten_surface_residue %>% 
+  separate(raw,c("position","residue")) %>%
+  group_by(position)
+
+pten_sfr <- pten %>% 
+  filter(position %in% pten_surface_residue$position) %>%
+  filter(class == "synonymous") %>% 
+  drop_na(lower_ci, upper_ci)
+
+pten_abundant_missense <- pten %>% filter(lower_ci >= quantile(pten_sfr$score, 0.05) & class == "missense") %>% mutate(tolerated = 1, count = 1)
+pten_unstable_missense <- pten %>% filter(upper_ci <= quantile(pten_sfr$score, 0.05) & class == "missense") %>% mutate(tolerated = 0, count = 1)
+
+pten_missense <- rbind(pten_abundant_missense[,c("variant","position","start","end","tolerated","count")],
+                        pten_unstable_missense[,c("variant","position","start","end","tolerated","count")])
+
+pten_missense_summary <- pten_missense %>%
+  group_by(start, end) %>% 
+  summarize(tolerated = sum(tolerated), count = sum(count), .groups = "drop")
+
+
+pten_missense_summary$pct_tolerated <- round(pten_missense_summary$tolerated / pten_missense_summary$count * 100,2)
+pten_missense_summary <- pten_missense_summary %>% mutate(grantham_score = 1)
+
+# Plot PTEN %tolerated with grantham Score
+
+counter <- 0
+for (x in 1:nrow(pten_missense_summary)) {
+  counter <- counter + 1
+  pten_missense_summary$grantham_score[counter] <- grantham_table[which(grantham_table$. == pten_missense_summary$end[counter]),which(colnames(grantham_table) == pten_missense_summary$start[counter])]
+}
+
+pten_grantham_summary <- pten_missense_summary %>% 
+  group_by(pct_tolerated) %>% 
+  mutate(mean_grantham_score = mean(grantham_score))
+
+
+## Using a linear model to see if there are overall relationships in the scatterplot
+pten_grantham <- data.frame("intercept" = as.numeric(lm(formula = pct_tolerated ~ grantham_score, data = pten_grantham_summary)$coefficients[1]), "slope" = lm(formula = pct_tolerated ~ grantham_score, data = pten_grantham_summary)$coefficients[2])
+
+## Rollave funcition from the Zoo package can be useful for getting a rolling average that looks at trends across a particular segment of data
+library(zoo)
+## <<<<<<< HEAD  ## 11/18 KAM commenting this stuff out so I can run the code without errors
+
+pten_missense_summary <- pten_missense_summary %>% arrange(grantham_score)
+pten_missense_summary$rollave_by_grantham <- rollmean(pten_missense_summary$pct_tolerated, 30, na.pad=TRUE)
+
+## =======
+
+pten_missense_summary <- pten_missense_summary %>% arrange(grantham_score)
+pten_missense_summary$rollave_by_grantham <- rollmean(pten_missense_summary$pct_tolerated, 30, na.pad=TRUE)
+
+## >>>>>>> bfc571146b59b77f6abeaad3f953b4e988cfd58c
+pten_tolerated_grantham_plot <- ggplot() +
+  theme_bw(base_size = 20) + theme_bw() + 
+  geom_point(data = pten_missense_summary, aes(x = grantham_score, y = pct_tolerated), alpha = 0.1) +   ## Don't use geom_jitter for a scatterplot, where x is also a numeric variable (it's fine to use if x is a factor). Also, I think it makes sense to reverse the order of the x and y variables, since I consider "pct tolerated" to be potentially dependent on the Grantham score.
+  #geom_point(data = pten_grantham_summary, aes(x=pct_tolerated, y=mean_grantham_score), shape = 95, size = 8)  + 
+  geom_abline(intercept = pten_grantham$intercept[1], slope = pten_grantham$slope[1]) +
+  geom_point(data = pten_missense_summary, aes(x = grantham_score, y = rollave_by_grantham), shape = 16, color = "red") +
+  labs(title="PTEN %tolerated with grantham")
+pten_tolerated_grantham_plot
+ggsave(file = "plots/PTEN_pcttolerated_with_grantham_Score.pdf", pten_tolerated_grantham_plot, height = 4, width = 5)
+
+
+# PTEN %tolerated with Hydrophobic pH7 Change
+
+pten_missense_summary <- pten_missense_summary %>% mutate(hydrophobic_start = 0, hydrophobic_end = 0, hydrophobic_change = 0)
+counter <- 0
+for (x in 1:nrow(pten_missense_summary)) {
+  counter <- counter + 1
+  pten_missense_summary$hydrophobic_start[counter] <- amino_acid_chart[which(amino_acid_chart$amino_acid == pten_missense_summary$start[counter]),which(colnames(amino_acid_chart) == "hphobic_ph7")]
+  pten_missense_summary$hydrophobic_end[counter] <- amino_acid_chart[which(amino_acid_chart$amino_acid == pten_missense_summary$end[counter]),which(colnames(amino_acid_chart) == "hphobic_ph7")]
+}
+pten_missense_summary$hydrophobic_change <- pten_missense_summary$hydrophobic_start - pten_missense_summary$hydrophobic_end
+
+#pten_hydrophobic_pH7_summary <- pten_missense_summary %>% 
+#  group_by(pct_tolerated) %>% 
+#  mutate(mean_hydrophocbic_pH7_score = mean(hydrophobic_end))
+
+pten_hydrophobic <- data.frame("intercept" = lm(formula = pct_tolerated ~ hydrophobic_change, data = pten_missense_summary)$coefficients[1], "slope" = lm(formula = pct_tolerated ~ hydrophobic_change, data = pten_missense_summary)$coefficients[2])
+
+pten_missense_summary <- pten_missense_summary %>% arrange(hydrophobic_change)
+pten_missense_summary$rollave_by_hydrophobic_change <- rollmean(pten_missense_summary$pct_tolerated, 30, na.pad=TRUE)
+
+pten_hydrophobic_pH7_plot <- ggplot() +
+  theme_bw(base_size = 20) + theme_bw() + 
+  geom_point(data = pten_missense_summary, aes(x = hydrophobic_change, y = pct_tolerated), alpha = 0.1) +
+  #geom_point(data = pten_hydrophobic_pH7_summary, aes(x=, y=mean_hydrophocbic_pH7_score), shape = 95, size = 8)  + 
+  geom_abline(intercept = pten_hydrophobic$intercept[1], slope = pten_hydrophobic$slope[1]) +
+  geom_point(data = pten_missense_summary, aes(x = hydrophobic_change, y = rollave_by_hydrophobic_change), shape = 16, color = "red") +
+  labs(title="PTEN %tolerated with Hydrophobic pH7 Change")
+pten_hydrophobic_pH7_plot
+ggsave(file = "plots/PTEN_pcttolerated_with_Hydrophobic_pH7_Change.pdf", pten_hydrophobic_pH7_plot, height = 4, width = 5)
+
+
+# PTEN %tolerated with Weight Change
+
+pten_missense_summary <- pten_missense_summary %>% mutate(weight_start = 0, weight_end = 0, weight_change = 0)
+counter <- 0
+for (x in 1:nrow(pten_missense_summary)) {
+  counter <- counter + 1
+  pten_missense_summary$weight_start[counter] <- amino_acid_chart[which(amino_acid_chart$amino_acid == pten_missense_summary$start[counter]),which(colnames(amino_acid_chart) == "weight")]
+  pten_missense_summary$weight_end[counter] <- amino_acid_chart[which(amino_acid_chart$amino_acid == pten_missense_summary$end[counter]),which(colnames(amino_acid_chart) == "weight")]
+}
+pten_missense_summary$weight_change <- pten_missense_summary$weight_start - pten_missense_summary$weight_end
+
+pten_weight <- data.frame("intercept" = lm(formula = pct_tolerated ~ weight_change, data = pten_missense_summary)$coefficients[1], "slope" = lm(formula = pct_tolerated ~ weight_change, data = pten_missense_summary)$coefficients[2])
+
+pten_missense_summary <- pten_missense_summary %>% arrange(weight_change)
+pten_missense_summary$rollave_by_weight <- rollmean(pten_missense_summary$pct_tolerated, 30, na.pad=TRUE)
+
+#pten_weight_summary <- pten_missense_summary %>% 
+#  group_by(pct_tolerated) %>% 
+#  mutate(mean_weight_score = mean(weight))
+
+pten_weight_plot <- ggplot() +
+  theme_bw(base_size = 20) + theme_bw() + 
+  geom_point(data = pten_missense_summary, aes(x = weight_change, y = pct_tolerated), alpha = 0.1) +
+  #geom_point(data = pten_weight_summary, aes(x=pct_tolerated, y=mean_weight_score), shape = 95, size = 8)  + 
+  geom_abline(intercept = pten_weight$intercept[1], slope = pten_weight$slope[1]) +
+  geom_point(data = pten_missense_summary, aes(x = weight_change, y = rollave_by_weight), shape = 16, color = "red") +
+  labs(title="PTEN %tolerated with Weight Change")
+pten_weight_plot
+
+ggsave(file = "plots/PTEN_pcttolerated_with_Weight_Change.pdf", pten_weight_plot, height = 4, width = 5)
+```
+<<<<<<< HEAD
+=======
+```{r}
+## 11/18/2020
+## Create PCA graph visualizing the variants in PTEN
+cols <- c("start", "end")
+pten_missense_summary_for_pca <- pten_missense_summary
+pten_missense_summary_for_pca$variant <- apply(pten_missense_summary[ , cols] , 1 , paste , collapse = ">" )
+
+## Adding some additional "change in" data columns
+
+pca = prcomp(pten_missense_summary_for_pca[,c("hydrophobic_start", "hydrophobic_change","weight_start", "weight_change")], scale. = TRUE) ## Rollave columns are only for plotting, not for PCA; other possible columns to include is "grantham_score",
+scores = as.data.frame(pca$x)
+pten_missense_summary_for_pca$PC1 <- scores$PC1
+pten_missense_summary_for_pca$PC2 <- scores$PC2
+x_lab <- round(summary(pca)$importance[2] * 100,0)
+y_lab <- round(summary(pca)$importance[5] * 100,0)
+
+Pten_PCA_plot <- ggplot() + 
+  xlab(paste("Principal component 1 (",x_lab,"% of variance explained)",sep="")) + 
+  ylab(paste("Principal component 2 (",y_lab,"% of variance explained)",sep="")) + 
+  theme(panel.background = element_blank(), panel.grid.major = element_line("grey99")) +
+  geom_point(data = pten_missense_summary_for_pca %>% arrange(pct_tolerated), aes(x = PC1, y = PC2, fill = pct_tolerated, size = count), shape = 21) + 
+  geom_hline(yintercept = 0, colour = "gray65") +
+  geom_vline(xintercept = 0, colour = "gray65") + 
+  geom_text_repel(data = pten_missense_summary_for_pca, aes(x = PC1, y = PC2, label = variant), segment.color = 'grey90', point.padding = 0.05, size = 1, segment.alpha = 0.5, color = "red") +
+  scale_fill_gradient2(low = "white", mid = "grey70", high = "red", na.value = "black", midpoint = 70) +
+   scale_size_area()
+Pten_PCA_plot
+ggsave(file = "plots/Pten_PCA_plot.pdf", Pten_PCA_plot, height = 6, width = 8)
+
+pca$rotation[,1] ## Looks like principal component 1 is driven largely by properties of correlating amino acid weight and hydrophobicity
+pca$rotation[,2] ## Looks like principal component 2 is driven largely by constrasting amino acid weight and hydrophobicity
+```
+>>>>>>> bfc571146b59b77f6abeaad3f953b4e988cfd58c
+
+```{r For combined proteins}
+## 11/19/20
+## Create Linear models and PCA plot for combined proteins
+
+combined_sfr_missense_summary <- rbind(pten_missense_summary[,c("start","end","count","pct_tolerated")], 
+                               tpmt_sfr_missense_summary[,c("start","end","count","pct_tolerated")],
+                               nudt15_sfr_missense_summary[,c("start","end","count","pct_tolerated")], 
+                               vkorc1_sfr_missense_summary[,c("start","end","count","pct_tolerated")])
+combined_sfr_missense_summary <- combined_sfr_missense_summary %>% group_by(start,end) %>% summarise(pct_tolerated = mean(pct_tolerated), count = sum(count)) %>% filter(!(end == "_"))
+
+# Plot Combined %tolerated with grantham Score
+combined_sfr_missense_summary <- combined_sfr_missense_summary %>% mutate(grantham_score = 1)
+counter <- 0
+for (x in 1:nrow(combined_sfr_missense_summary)) {
+  counter <- counter + 1
+  combined_sfr_missense_summary$grantham_score[counter] <- grantham_table[which(grantham_table$. == combined_sfr_missense_summary$end[counter]),which(colnames(grantham_table) == combined_sfr_missense_summary$start[counter])]
+}
+combined_grantham_summary <- combined_sfr_missense_summary %>% 
+  group_by(pct_tolerated) %>% 
+  mutate(mean_grantham_score = mean(grantham_score))
+
+combined_grantham <- data.frame("intercept" = as.numeric(lm(formula = pct_tolerated ~ grantham_score, data = combined_grantham_summary)$coefficients[1]), "slope" = lm(formula = pct_tolerated ~ grantham_score, data = combined_grantham_summary)$coefficients[2])
+
+combined_sfr_missense_summary <- combined_sfr_missense_summary %>% arrange(grantham_score)
+combined_sfr_missense_summary$rollave_by_grantham <- rollmean(combined_sfr_missense_summary$pct_tolerated, 30, na.pad=TRUE)
+
+combined_tolerated_grantham_plot <- ggplot() +
+  theme_bw(base_size = 20) + theme_bw() + 
+  geom_point(data = combined_sfr_missense_summary, aes(x = grantham_score, y = pct_tolerated), alpha = 0.1)  + 
+  geom_abline(intercept = combined_grantham$intercept[1], slope = combined_grantham$slope[1]) +
+  geom_point(data = combined_sfr_missense_summary, aes(x = grantham_score, y = rollave_by_grantham), shape = 16, color = "red") +
+  labs(title="Combined %tolerated with grantham")
+combined_tolerated_grantham_plot
+ggsave(file = "plots/Combined_pcttolerated_with_grantham_Score.pdf", combined_tolerated_grantham_plot, height = 4, width = 5)
+
+# Combined %tolerated with Hydrophobic pH7 Change
+combined_sfr_missense_summary <- combined_sfr_missense_summary %>% mutate(hydrophobic_start = 0, hydrophobic_end = 0, hydrophobic_change = 0)
+counter <- 0
+for (x in 1:nrow(combined_sfr_missense_summary)) {
+  counter <- counter + 1
+  combined_sfr_missense_summary$hydrophobic_start[counter] <- amino_acid_chart[which(amino_acid_chart$amino_acid == combined_sfr_missense_summary$start[counter]),which(colnames(amino_acid_chart) == "hphobic_ph7")]
+  combined_sfr_missense_summary$hydrophobic_end[counter] <- amino_acid_chart[which(amino_acid_chart$amino_acid == combined_sfr_missense_summary$end[counter]),which(colnames(amino_acid_chart) == "hphobic_ph7")]
+}
+combined_sfr_missense_summary$hydrophobic_change <- combined_sfr_missense_summary$hydrophobic_start - combined_sfr_missense_summary$hydrophobic_end
+
+combined_hydrophobic <- data.frame("intercept" = lm(formula = pct_tolerated ~ hydrophobic_change, data = combined_sfr_missense_summary)$coefficients[1], "slope" = lm(formula = pct_tolerated ~ hydrophobic_change, data = combined_sfr_missense_summary)$coefficients[2])
+combined_sfr_missense_summary <- combined_sfr_missense_summary %>% arrange(hydrophobic_change)
+combined_sfr_missense_summary$rollave_by_pH <- rollmean(combined_sfr_missense_summary$pct_tolerated, 30, na.pad=TRUE)
+combined_hydrophobic_pH7_plot <- ggplot() +
+  theme_bw(base_size = 20) + theme_bw() + 
+  geom_point(data = combined_sfr_missense_summary, aes(x = hydrophobic_change, y = pct_tolerated), alpha = 0.1) +
+  geom_abline(intercept = combined_hydrophobic$intercept[1], slope = combined_hydrophobic$slope[1]) +
+  geom_point(data = combined_sfr_missense_summary, aes(x = hydrophobic_change, y = rollave_by_pH), shape = 16, color = "red") +
+  labs(title="Combined %tolerated with Hydrophobic pH7 Change")
+combined_hydrophobic_pH7_plot
+ggsave(file = "plots/Combined_pcttolerated_with_Hydrophobic_pH7_Change.pdf", combined_hydrophobic_pH7_plot, height = 4, width = 5)
+
+# Combined %tolerated with Weight Change
+combined_sfr_missense_summary <- combined_sfr_missense_summary %>% mutate(weight_start = 0, weight_end = 0, weight_change = 0)
+counter <- 0
+for (x in 1:nrow(combined_sfr_missense_summary)) {
+  counter <- counter + 1
+  combined_sfr_missense_summary$weight_start[counter] <- amino_acid_chart[which(amino_acid_chart$amino_acid == combined_sfr_missense_summary$start[counter]),which(colnames(amino_acid_chart) == "weight")]
+  combined_sfr_missense_summary$weight_end[counter] <- amino_acid_chart[which(amino_acid_chart$amino_acid == combined_sfr_missense_summary$end[counter]),which(colnames(amino_acid_chart) == "weight")]
+}
+combined_sfr_missense_summary$weight_change <- combined_sfr_missense_summary$weight_start - combined_sfr_missense_summary$weight_end
+combined_weight <- data.frame("intercept" = lm(formula = pct_tolerated ~ weight_change, data = combined_sfr_missense_summary)$coefficients[1], "slope" = lm(formula = pct_tolerated ~ weight_change, data = combined_sfr_missense_summary)$coefficients[2])
+combined_sfr_missense_summary <- combined_sfr_missense_summary %>% arrange(weight_change)
+combined_sfr_missense_summary$rollave_by_weight <- rollmean(combined_sfr_missense_summary$pct_tolerated, 30, na.pad=TRUE)
+
+combined_weight_plot <- ggplot() +
+  theme_bw(base_size = 20) + theme_bw() + 
+  geom_point(data = combined_sfr_missense_summary, aes(x = weight_change, y = pct_tolerated), alpha = 0.1) +
+  geom_abline(intercept = combined_weight$intercept[1], slope = combined_weight$slope[1]) +
+  geom_point(data = combined_sfr_missense_summary, aes(x = weight_change, y = rollave_by_weight), shape = 16, color = "red") +
+  labs(title="Combined %tolerated with Weight Change")
+combined_weight_plot
+ggsave(file = "plots/Combined_pcttolerated_with_Weight_Change.pdf", combined_weight_plot, height = 4, width = 5)
+
+## Create PCA cluster plot
+cols <- c("start", "end")
+combined_sfr_missense_summary_for_pca <- combined_sfr_missense_summary
+combined_sfr_missense_summary_for_pca$variant <- apply(combined_sfr_missense_summary[ , cols] , 1 , paste , collapse = ">" )
+pca = prcomp(combined_sfr_missense_summary_for_pca[,c("hydrophobic_start", "hydrophobic_change","weight_start", "weight_change")], scale. = TRUE) 
+scores = as.data.frame(pca$x)
+combined_sfr_missense_summary_for_pca$PC1 <- scores$PC1
+combined_sfr_missense_summary_for_pca$PC2 <- scores$PC2
+combined_x_lab <- round(summary(pca)$importance[2] * 100,0)
+combined_y_lab <- round(summary(pca)$importance[5] * 100,0)
+
+Combined_PCA_plot <- ggplot() + 
+  xlab(paste("Principal component 1 (",combined_x_lab,"% of variance explained)",sep="")) + 
+  ylab(paste("Principal component 2 (",combined_y_lab,"% of variance explained)",sep="")) + 
+  theme(panel.background = element_blank(), panel.grid.major = element_line("grey99")) +
+  geom_point(data = combined_sfr_missense_summary_for_pca %>% arrange(pct_tolerated), aes(x = PC1, y = PC2, fill = pct_tolerated, size = count), shape = 21) + 
+  geom_hline(yintercept = 0, colour = "gray65") +
+  geom_vline(xintercept = 0, colour = "gray65") + 
+  geom_text_repel(data =combined_sfr_missense_summary_for_pca, aes(x = PC1, y = PC2, label = variant), segment.color = 'grey90', point.padding = 0.05, size = 1, segment.alpha = 0.5, color = "red") +
+  scale_fill_gradient2(low = "white", mid = "grey70", high = "red", na.value = "black", midpoint = 70) +
+  scale_size_area()
+Combined_PCA_plot
+ggsave(file = "plots/Combined_PCA_plot.pdf", Combined_PCA_plot, height = 6, width = 8)
+
+```
+
+```{r Start looking into some of Jesse Bloom's antibody escape mutation data}
+## Update on 11/25/2020 to subset the combined proteins with the Bloom data
+## update on 11/30 to include the rest of the Bloom lab prteins
+vrc01 <- read.csv(file = "data/Bloom_lab/HIV/VRC01.csv"); colnames(vrc01) <- c("position","start","end","mutfracsurvive")
+bnc117 <- read.csv(file = "data/Bloom_lab/HIV/3BNC117.csv"); colnames(bnc117) <- c("position","start","end","mutfracsurvive")
+e10e8 <- read.csv(file = "data/Bloom_lab/HIV/10E8.csv"); colnames(e10e8) <- c("position","start","end","mutfracsurvive")
+e101074 <- read.csv(file = "data/Bloom_lab/HIV/101074.csv"); colnames(e101074) <- c("position","start","end","mutfracsurvive")
+pg9 <- read.csv(file = "data/Bloom_lab/HIV/PG9.csv"); colnames(pg9) <- c("position","start","end","mutfracsurvive")
+pgt121 <- read.csv(file = "data/Bloom_lab/HIV/PGT121.csv"); colnames(pgt121) <- c("position","start","end","mutfracsurvive")
+pgt145 <- read.csv(file = "data/Bloom_lab/HIV/PGT145.csv"); colnames(pgt145) <- c("position","start","end","mutfracsurvive")
+pgt151 <- read.csv(file = "data/Bloom_lab/HIV/PGT151.csv"); colnames(pgt151) <- c("position","start","end","mutfracsurvive")
+vrc34 <- read.csv(file = "data/Bloom_lab/HIV/VRC34.csv"); colnames(vrc34) <- c("position","start","end","mutfracsurvive")
+
+## There is A LOT more antibody escape data we can include from this paper (eg. PG9, PGT121, etc), so we should start including those here.
+vrc01$mut_class <- NA
+for(x in 1:nrow(vrc01)){
+  if(vrc01$start[x] == vrc01$end[x]){vrc01$mut_class[x] <- "synonymous"}
+  if(vrc01$start[x] != vrc01$end[x]){vrc01$mut_class[x] <- "missense"}
+}
+bnc117$mut_class <- NA
+for(x in 1:nrow(bnc117)){
+  if(bnc117$start[x] == bnc117$end[x]){bnc117$mut_class[x] <- "synonymous"}
+  if(bnc117$start[x] != bnc117$end[x]){bnc117$mut_class[x] <- "missense"}
+}
+e10e8$mut_class <- NA
+for(x in 1:nrow(e10e8)){
+  if(e10e8$start[x] == e10e8$end[x]){e10e8$mut_class[x] <- "synonymous"}
+  if(e10e8$start[x] != e10e8$end[x]){e10e8$mut_class[x] <- "missense"}
+}
+e101074$mut_class <- NA
+for(x in 1:nrow(e101074)){
+  if(e101074$start[x] == e101074$end[x]){e101074$mut_class[x] <- "synonymous"}
+  if(e101074$start[x] != e101074$end[x]){e101074$mut_class[x] <- "missense"}
+}
+pg9$mut_class <- NA
+for(x in 1:nrow(pg9)){
+  if(pg9$start[x] == pg9$end[x]){pg9$mut_class[x] <- "synonymous"}
+  if(pg9$start[x] != pg9$end[x]){pg9$mut_class[x] <- "missense"}
+}
+pgt121$mut_class <- NA
+for(x in 1:nrow(pgt121)){
+  if(pgt121$start[x] == pgt121$end[x]){pgt121$mut_class[x] <- "synonymous"}
+  if(pgt121$start[x] != pgt121$end[x]){pgt121$mut_class[x] <- "missense"}
+}
+pgt145$mut_class <- NA
+for(x in 1:nrow(vrc01)){
+  if(pgt145$start[x] == pgt145$end[x]){pgt145$mut_class[x] <- "synonymous"}
+  if(pgt145$start[x] != pgt145$end[x]){pgt145$mut_class[x] <- "missense"}
+}
+pgt151$mut_class <- NA
+for(x in 1:nrow(pgt151)){
+  if(pgt151$start[x] == pgt151$end[x]){pgt151$mut_class[x] <- "synonymous"}
+  if(pgt151$start[x] != pgt151$end[x]){pgt151$mut_class[x] <- "missense"}
+}
+vrc34$mut_class <- NA
+for(x in 1:nrow(vrc34)){
+  if(vrc34$start[x] == vrc34$end[x]){vrc34$mut_class[x] <- "synonymous"}
+  if(vrc34$start[x] != vrc34$end[x]){vrc34$mut_class[x] <- "missense"}
+}
+
+
+## Look at some escape positions
+vrc01_contact_list <- c(199,278,279,280,365,368,459) #c(276,278,279,280,281,282,362,365,366,367,368,371)
+bnc117_contact_list <- c(207,278,279,280,365,461,463,465,469) #c(198,207,276,278,279,280,281,282,306,316,365,366,367,368,371,392,428,430,456,457,458,459,460,461,462,463,464,465,469)
+e10e8_contact_list <- c(672,683) #c(665,668,669,670,671,672,673,676,677,679,680,683)
+e101074_contact_list <- c(325,327) #c(301,322,324,325,326,327,328,330,332,417)
+pg9_contact_list <- c(160,162,164,165,166,167,169,170,171,172,173,223,242) #c(164,165,166,167,168,170,172,173)
+pgt121_contact_list <- c(135,325,327) #c(322,324,325,326,327,328,330,332,417)
+pgt145_contact_list <- c(166,169) #c(160,161,162,166,167,168,169)
+pgt151_contact_list <- c(519,542,550,554,640,647) #c(245,246,262,512,513,514,515,516,517,519,521,522,542,543,549,550,554,592,611,637,638,640,641,643,644)
+vrc34_contact_list <- c(229,513,515,516,517) #c(229,230,231,241,512,513,514,515,516,517,518,519,520)
+
+vrc01_contacts <- data.frame(subset(vrc01, position %in% vrc01_contact_list))
+bnc117_contacts <- data.frame(subset(bnc117, position %in% bnc117_contact_list))
+e10e8_contacts <- data.frame(subset(e10e8, position %in% e10e8_contact_list))
+e101074_contacts <- data.frame(subset(e101074, position %in% e101074_contact_list))
+pg9_contacts <- data.frame(subset(pg9, position %in% pg9_contact_list))
+pgt121_contacts <- data.frame(subset(pgt121, position %in% pgt121_contact_list))
+pgt145_contacts <- data.frame(subset(pgt145, position %in% pgt145_contact_list))
+pgt151_contacts <- data.frame(subset(pgt151, position %in% pgt151_contact_list))
+vrc34_contacts <- data.frame(subset(vrc34, position %in% vrc34_contact_list))
+
+#ggplot() + theme_bw() + scale_x_log10() +
+#  geom_histogram(data = vrc01 %>% filter(mut_class == "synonymous"), aes(x = mutfracsurvive), color = "red") + 
+#  geom_histogram(data = vrc01 %>% filter(mut_class == "missense"), aes(x = mutfracsurvive), alpha = 0.1) +
+#  geom_histogram(data = vrc01_contacts %>% filter(mut_class == "missense"), aes(x = mutfracsurvive), alpha = 0.5, color = "green")
+```
+
+
+```{r Look at the synonymous and missense distributions in the Jesse Bloom HIV data}
+ggplot() + scale_x_log10() + 
+  geom_histogram(data = vrc01 %>% filter(mut_class == "missense"), aes(x = mutfracsurvive), alpha = 0.5, fill = "red") +
+  geom_histogram(data = vrc01 %>% filter(mut_class == "synonymous"), aes(x = mutfracsurvive, y = ..count..))
+
+ggplot() + scale_x_log10() + 
+  geom_histogram(data = bnc117 %>% filter(mut_class == "missense"), aes(x = mutfracsurvive), alpha = 0.5, fill = "red") +
+  geom_histogram(data = bnc117 %>% filter(mut_class == "synonymous"), aes(x = mutfracsurvive, y = ..count..))
+
+ggplot() + scale_x_log10() + 
+  geom_histogram(data = e10e8 %>% filter(mut_class == "missense"), aes(x = mutfracsurvive), alpha = 0.5, fill = "red") +
+  geom_histogram(data = e10e8 %>% filter(mut_class == "synonymous"), aes(x = mutfracsurvive, y = ..count..))
+
+ggplot() + scale_x_log10() + 
+  geom_histogram(data = e101074 %>% filter(mut_class == "missense"), aes(x = mutfracsurvive), alpha = 0.5, fill = "red") +
+  geom_histogram(data = e101074 %>% filter(mut_class == "synonymous"), aes(x = mutfracsurvive, y = ..count..))
+
+ggplot() + scale_x_log10() + 
+  geom_histogram(data = pg9 %>% filter(mut_class == "missense"), aes(x = mutfracsurvive), alpha = 0.5, fill = "red") +
+  geom_histogram(data = pg9 %>% filter(mut_class == "synonymous"), aes(x = mutfracsurvive, y = ..count..))
+```
+
+
+```{r Start looking into some of Jesse Bloom's antibody escape mutation data}
+## Let's consider anything above the highest observed synonymous variant score as escaping  <--- OK, I think we should come up with a more stringent cutoff to define something as escaping.
+vrc01_synonymous_cutoff <- max((vrc01 %>% filter(mut_class == "synonymous"))$mutfracsurvive)
+bnc117_synonymous_cutoff <- max((bnc117 %>% filter(mut_class == "synonymous"))$mutfracsurvive)
+e10e8_synonymous_cutoff <- max((e10e8 %>% filter(mut_class == "synonymous"))$mutfracsurvive)
+e101074_synonymous_cutoff <- max((e101074 %>% filter(mut_class == "synonymous"))$mutfracsurvive)
+pg9_synonymous_cutoff <- max((pg9 %>% filter(mut_class == "synonymous"))$mutfracsurvive)
+pgt121_synonymous_cutoff <- max((pgt121 %>% filter(mut_class == "synonymous"))$mutfracsurvive)
+pgt145_synonymous_cutoff <- max((pgt145 %>% filter(mut_class == "synonymous"))$mutfracsurvive)
+pgt151_synonymous_cutoff <- max((pgt151 %>% filter(mut_class == "synonymous"))$mutfracsurvive)
+vrc34_synonymous_cutoff <- max((vrc34 %>% filter(mut_class == "synonymous"))$mutfracsurvive)
+
+cols <- c("start", "end")
+combined_sfr_missense_summary_for_interaction <- combined_sfr_missense_summary
+combined_sfr_missense_summary_for_interaction$variant <- apply(combined_sfr_missense_summary[ , cols] , 1 , paste , collapse = ">" )
+
+vrc01_contacts$variant <- apply(vrc01_contacts[ , cols] , 1 , paste , collapse = ">" )
+bnc117_contacts$variant <- apply(bnc117_contacts[ , cols] , 1 , paste , collapse = ">" )
+e10e8_contacts$variant <- apply(e10e8_contacts[ , cols] , 1 , paste , collapse = ">" )
+e101074_contacts$variant <- apply(e101074_contacts[ , cols] , 1 , paste , collapse = ">" )
+pg9_contacts$variant <- apply(pg9_contacts[ , cols] , 1 , paste , collapse = ">" )
+pgt121_contacts$variant <- apply(pgt121_contacts[ , cols] , 1 , paste , collapse = ">" )
+pgt145_contacts$variant <- apply(pgt145_contacts[ , cols] , 1 , paste , collapse = ">" )
+pgt151_contacts$variant <- apply(pgt151_contacts[ , cols] , 1 , paste , collapse = ">" )
+vrc34_contacts$variant <- apply(vrc34_contacts[ , cols] , 1 , paste , collapse = ">" )
+
+## Let's look at HIV envelope residue N280 and see what variants were selected when challenged with VRC01
+vrc01_subset <- vrc01_contacts %>% filter(mut_class == "missense") %>% mutate(count = 1, escape = 0)
+bnc117_subset <- bnc117_contacts %>% filter(mut_class == "missense") %>% mutate(count = 1, escape = 0)
+e10e8_subset <- e10e8_contacts %>% filter(mut_class == "missense") %>% mutate(count = 1, escape = 0)
+e101074_subset <- e101074_contacts %>% filter(mut_class == "missense") %>% mutate(count = 1, escape = 0)
+pg9_subset <- pg9_contacts %>% filter(mut_class == "missense") %>% mutate(count = 1, escape = 0)
+pgt121_subset <- pgt121_contacts %>% filter(mut_class == "missense") %>% mutate(count = 1, escape = 0)
+pgt145_subset <- pgt145_contacts %>% filter(mut_class == "missense") %>% mutate(count = 1, escape = 0)
+pgt151_subset <- pgt151_contacts %>% filter(mut_class == "missense") %>% mutate(count = 1, escape = 0)
+vrc34_subset <- vrc34_contacts %>% filter(mut_class == "missense") %>% mutate(count = 1, escape = 0)
+
+for(x in 1:nrow(vrc01_subset)){if(vrc01_subset$mutfracsurvive[x] > vrc01_synonymous_cutoff){vrc01_subset$escape[x] <- 1}}
+for(x in 1:nrow(bnc117_subset)){if(bnc117_subset$mutfracsurvive[x] > bnc117_synonymous_cutoff){bnc117_subset$escape[x] <- 1}}
+for(x in 1:nrow(e10e8_subset)){if(e10e8_subset$mutfracsurvive[x] > e10e8_synonymous_cutoff){e10e8_subset$escape[x] <- 1}}
+for(x in 1:nrow(e101074_subset)){if(e101074_subset$mutfracsurvive[x] > e101074_synonymous_cutoff){e101074_subset$escape[x] <- 1}}
+for(x in 1:nrow(pg9_subset)){if(pg9_subset$mutfracsurvive[x] > pg9_synonymous_cutoff){pg9_subset$escape[x] <- 1}}
+for(x in 1:nrow(pgt121_subset)){if(pgt121_subset$mutfracsurvive[x] > pgt121_synonymous_cutoff){pgt121_subset$escape[x] <- 1}}
+for(x in 1:nrow(pgt145_subset)){if(pgt145_subset$mutfracsurvive[x] > pgt145_synonymous_cutoff){pgt145_subset$escape[x] <- 1}}
+for(x in 1:nrow(pgt151_subset)){if(pgt151_subset$mutfracsurvive[x] > pgt151_synonymous_cutoff){pgt151_subset$escape[x] <- 1}}
+for(x in 1:nrow(vrc34_subset)){if(vrc34_subset$mutfracsurvive[x] > vrc34_synonymous_cutoff){vrc34_subset$escape[x] <- 1}}
+
+combined_Bloom_data <- rbind(vrc01_subset[,c("variant","escape","count")],
+                             bnc117_subset[,c("variant","escape","count")],
+                             e10e8_subset[,c("variant","escape","count")],
+                             e101074_subset[,c("variant","escape","count")],
+                             pg9_subset[,c("variant","escape","count")],
+                             pgt121_subset[,c("variant","escape","count")],
+                             pgt145_subset[,c("variant","escape","count")],
+                             pgt151_subset[,c("variant","escape","count")],
+                             vrc34_subset[,c("variant","escape","count")])
+
+vrc01_subset2 <- vrc01_subset %>% group_by(variant) %>% summarize(escape = sum(escape), count = sum(count), .groups = "drop") %>% mutate(pct_escape = escape / count * 100)
+vrc01_subset3 <- merge(vrc01_subset2, combined_sfr_missense_summary_for_interaction[,c("variant","pct_tolerated")], by = "variant", all.x = T)
+
+combined_Bloom_data <- combined_Bloom_data %>% group_by(variant) %>% summarize(escape = sum(escape), count = sum(count), .groups = "drop") %>% mutate(pct_escape = escape / count * 100)
+combined_Bloom_data_subset <- merge(combined_Bloom_data, combined_sfr_missense_summary_for_interaction[,c("variant","pct_tolerated")], by = "variant", all.x = T)
+
+#ggplot() + theme_bw() + 
+#  geom_point(data = vrc01_subset3, aes(x = pct_tolerated, y = pct_escape)) +
+#  geom_text_repel(data = vrc01_subset3 %>% filter(pct_escape > 0), aes(x = pct_tolerated, y = pct_escape, label = variant), color = "red")
+
+#ggplot() + theme_bw() + 
+#  geom_histogram(data = vrc01_subset3 %>% filter(pct_escape == 0), aes(x = pct_tolerated), color = "black", alpha = 0.1) +
+#  geom_histogram(data = vrc01_subset3 %>% filter(pct_escape > 0), aes(x = pct_tolerated), fill = "orange", color = "red")
+
+compare_Bloom_data_geopoint_plot <- ggplot() + theme_bw() + 
+  geom_point(data = combined_Bloom_data_subset %>% filter(count >= 5), aes(x = pct_tolerated, y = pct_escape, fill = pct_tolerated, size = count), shape = 21) +
+  geom_text_repel(data = combined_Bloom_data_subset %>% filter(pct_escape > 0 & count >= 5), aes(x = pct_tolerated, y = pct_escape, label = variant), color = "red", size = 1.5) + 
+  labs(title="Compare Bloom data geopoint") + 
+  scale_fill_gradient2(low = "white", mid = "grey70", high = "red", na.value = "black", midpoint = 70) +
+  scale_size_area()
+compare_Bloom_data_geopoint_plot
+ggsave(file = "plots/Compare_Bloom_data_geopoint.pdf", compare_Bloom_data_geopoint_plot, height = 6, width = 8)
+
+compare_Bloom_data_histogram_plot <- ggplot() + theme_bw() + 
+  geom_histogram(data = combined_Bloom_data_subset %>% filter(pct_escape >= 0.5), aes(x = pct_tolerated), color = "black", alpha = 0.1, binwidth = 5) +
+  geom_histogram(data = combined_Bloom_data_subset %>% filter(pct_escape < 0.5), aes(x = pct_tolerated), fill = "orange", color = "red", alpha = 0.4, binwidth = 5) +
+  labs(title="Compare Bloom data histogram")
+compare_Bloom_data_histogram_plot
+ggsave(file = "plots/Compare_Bloom_data_histogram.pdf", compare_Bloom_data_histogram_plot, height = 6, width = 8)
+```
+
+I realized we still don't have what I consider to be a "gold standard" escape data yet. So time to get into the details of that.
+```{r exporting data for other purposes}
+vrc01_matrix <- combined_sfr_missense_summary[,c("start","end")]; vrc01_matrix$escape <- NA; vrc01_matrix$escape <- as.numeric(vrc01_matrix$escape)
+
+table(vrc01_subset$start)/19
+sum(table(vrc01_subset$start)/19)
+
+for(x in 1:nrow(vrc01_subset)){
+  temp_start <- vrc01_subset$start[x]
+  temp_end <- vrc01_subset$end[x]
+  if(is.na(vrc01_matrix[vrc01_matrix$start == temp_start & vrc01_matrix$end == temp_end, "escape"])){vrc01_matrix[vrc01_matrix$start == temp_start & vrc01_matrix$end == temp_end, "escape"] <- 0}
+  if(vrc01_subset$escape[x] == 1){vrc01_matrix[vrc01_matrix$start == temp_start & vrc01_matrix$end == temp_end, "escape"] <- vrc01_matrix[vrc01_matrix$start == temp_start & vrc01_matrix$end == temp_end, "escape"] + 1}
+  if(vrc01_subset$escape[x] == 0){vrc01_matrix[vrc01_matrix$start == temp_start & vrc01_matrix$end == temp_end, "escape"] <- vrc01_matrix[vrc01_matrix$start == temp_start & vrc01_matrix$end == temp_end, "escape"] + 0}
+}
+
+vrc01_heatmap <- ggplot() + geom_tile(data  = vrc01_matrix, aes(x = factor(start, levels = amino_acid_factors), y = factor(end, levels = amino_acid_factors), fill = escape)) + labs(x = "Original amino acid", y = "Mutant amino acid")
+vrc01_heatmap
+
+ggplot() + theme_bw() + scale_x_log10(limits = c(1e-21,1)) + 
+  geom_histogram(data = vrc01_subset, aes(x = mutfracsurvive), bins = 100) + facet_grid(rows = vars(position))
+```
+
+```{r exporting data for other purposes}
+vrc34_matrix <- combined_sfr_missense_summary[,c("start","end")]; vrc34_matrix$escape <- NA; vrc34_matrix$escape <- as.numeric(vrc34_matrix$escape)
+
+table(vrc34_subset$start)/19
+sum(table(vrc34_subset$start)/19)
+
+for(x in 1:nrow(vrc34_subset)){
+  temp_start <- vrc34_subset$start[x]
+  temp_end <- vrc34_subset$end[x]
+  
+  if(is.na(vrc34_matrix[vrc34_matrix$start == temp_start & vrc34_matrix$end == temp_end, "escape"])){vrc34_matrix[vrc34_matrix$start == temp_start & vrc34_matrix$end == temp_end, "escape"] <- 0}
+  if(vrc34_subset$escape[x] == 1){vrc34_matrix[vrc34_matrix$start == temp_start & vrc34_matrix$end == temp_end, "escape"] <- vrc34_matrix[vrc34_matrix$start == temp_start & vrc34_matrix$end == temp_end, "escape"] + 1}
+  if(vrc34_subset$escape[x] == 0){vrc34_matrix[vrc34_matrix$start == temp_start & vrc34_matrix$end == temp_end, "escape"] <- vrc34_matrix[vrc34_matrix$start == temp_start & vrc34_matrix$end == temp_end, "escape"] + 0}
+}
+
+vrc34_heatmap <- ggplot() + geom_tile(data  = vrc34_matrix, aes(x = factor(start, levels = amino_acid_factors), y = factor(end, levels = amino_acid_factors), fill = escape)) + labs(x = "Original amino acid", y = "Mutant amino acid")
+vrc34_heatmap
+
+ggplot() + theme_bw() + scale_x_log10(limits = c(1e-21,1)) + 
+  geom_histogram(data = vrc34_subset, aes(x = mutfracsurvive), bins = 100) + facet_grid(rows = vars(position))
+```
+
+```{r exporting data for other purposes}
+e101074_matrix <- combined_sfr_missense_summary[,c("start","end")]; e101074_matrix$escape <- NA; e101074_matrix$escape <- as.numeric(e101074_matrix$escape)
+
+table(e101074_subset$start)/19
+sum(table(e101074_subset$start)/19)
+
+for(x in 1:nrow(e101074_subset)){
+  temp_start <- e101074_subset$start[x]
+  temp_end <- e101074_subset$end[x]
+  
+  if(is.na(e101074_matrix[e101074_matrix$start == temp_start & e101074_matrix$end == temp_end, "escape"])){e101074_matrix[e101074_matrix$start == temp_start & e101074_matrix$end == temp_end, "escape"] <- 0}
+  if(e101074_subset$escape[x] == 1){e101074_matrix[e101074_matrix$start == temp_start & e101074_matrix$end == temp_end, "escape"] <- e101074_matrix[e101074_matrix$start == temp_start & e101074_matrix$end == temp_end, "escape"] + 1}
+  if(e101074_subset$escape[x] == 0){e101074_matrix[e101074_matrix$start == temp_start & e101074_matrix$end == temp_end, "escape"] <- e101074_matrix[e101074_matrix$start == temp_start & e101074_matrix$end == temp_end, "escape"] + 0}
+}
+
+e101074_heatmap <- ggplot() + geom_tile(data  = e101074_matrix, aes(x = factor(start, levels = amino_acid_factors), y = factor(end, levels = amino_acid_factors), fill = escape)) + labs(x = "Original amino acid", y = "Mutant amino acid")
+e101074_heatmap
+
+ggplot() + theme_bw() + scale_x_log10(limits = c(1e-21,1)) + 
+  geom_histogram(data = e101074_subset, aes(x = mutfracsurvive), bins = 100) + facet_grid(rows = vars(position))
+```
+
+```{r exporting data for other purposes}
+bnc117_matrix <- combined_sfr_missense_summary[,c("start","end")]; bnc117_matrix$escape <- NA; bnc117_matrix$escape <- as.numeric(bnc117_matrix$escape)
+
+table(bnc117_subset$start)/19
+sum(table(bnc117_subset$start)/19)
+## This one has a lot of contact positions
+
+for(x in 1:nrow(bnc117_subset)){
+  temp_start <- bnc117_subset$start[x]
+  temp_end <- bnc117_subset$end[x]
+  if(is.na(bnc117_matrix[bnc117_matrix$start == temp_start & bnc117_matrix$end == temp_end, "escape"])){bnc117_matrix[bnc117_matrix$start == temp_start & bnc117_matrix$end == temp_end, "escape"] <- 0}
+  if(bnc117_subset$escape[x] == 1){bnc117_matrix[bnc117_matrix$start == temp_start & bnc117_matrix$end == temp_end, "escape"] <- bnc117_matrix[bnc117_matrix$start == temp_start & bnc117_matrix$end == temp_end, "escape"] + 1}
+  if(bnc117_subset$escape[x] == 0){bnc117_matrix[bnc117_matrix$start == temp_start & bnc117_matrix$end == temp_end, "escape"] <- bnc117_matrix[bnc117_matrix$start == temp_start & bnc117_matrix$end == temp_end, "escape"] + 0}
+}
+
+bnc117_heatmap <- ggplot() + geom_tile(data  = bnc117_matrix, aes(x = factor(start, levels = amino_acid_factors), y = factor(end, levels = amino_acid_factors), fill = escape)) + labs(x = "Original amino acid", y = "Mutant amino acid")
+bnc117_heatmap
+
+ggplot() + theme_bw() + scale_x_log10(limits = c(1e-21,1)) + 
+  geom_histogram(data = bnc117_subset, aes(x = mutfracsurvive), bins = 100) + facet_grid(rows = vars(position))
+```
+
+```{r exporting data for other purposes}
+e10e8_matrix <- combined_sfr_missense_summary[,c("start","end")]; e10e8_matrix$escape <- NA; e10e8_matrix$escape <- as.numeric(e10e8_matrix$escape)
+
+table(e10e8_subset$start)/19
+
+for(x in 1:nrow(e10e8_subset)){
+  temp_start <- e10e8_subset$start[x]
+  temp_end <- e10e8_subset$end[x]
+  if(is.na(e10e8_matrix[e10e8_matrix$start == temp_start & e10e8_matrix$end == temp_end, "escape"])){e10e8_matrix[e10e8_matrix$start == temp_start & e10e8_matrix$end == temp_end, "escape"] <- 0}
+  if(e10e8_subset$escape[x] == 1){e10e8_matrix[e10e8_matrix$start == temp_start & e10e8_matrix$end == temp_end, "escape"] <- e10e8_matrix[e10e8_matrix$start == temp_start & e10e8_matrix$end == temp_end, "escape"] + 1}
+  if(e10e8_subset$escape[x] == 0){e10e8_matrix[e10e8_matrix$start == temp_start & e10e8_matrix$end == temp_end, "escape"] <- e10e8_matrix[e10e8_matrix$start == temp_start & e10e8_matrix$end == temp_end, "escape"] + 0}
+}
+
+e10e8_heatmap <- ggplot() + geom_tile(data  = e10e8_matrix, aes(x = factor(start, levels = amino_acid_factors), y = factor(end, levels = amino_acid_factors), fill = escape)) + labs(x = "Original amino acid", y = "Mutant amino acid")
+e10e8_heatmap
+
+ggplot() + theme_bw() + scale_x_log10(limits = c(1e-21,1)) + 
+  geom_histogram(data = e10e8_subset, aes(x = mutfracsurvive), bins = 100) + facet_grid(rows = vars(position))
+```
+
+```{r exporting data for other purposes}
+pg9_matrix <- combined_sfr_missense_summary[,c("start","end")]; pg9_matrix$escape <- NA; pg9_matrix$escape <- as.numeric(pg9_matrix$escape)
+
+table(pg9_subset$start)/19
+sum(table(pg9_subset$start)/19)
+
+for(x in 1:nrow(pg9_subset)){
+  temp_start <- pg9_subset$start[x]
+  temp_end <- pg9_subset$end[x]
+  
+  if(is.na(pg9_matrix[pg9_matrix$start == temp_start & pg9_matrix$end == temp_end, "escape"])){pg9_matrix[pg9_matrix$start == temp_start & pg9_matrix$end == temp_end, "escape"] <- 0}
+  if(pg9_subset$escape[x] == 1){pg9_matrix[pg9_matrix$start == temp_start & pg9_matrix$end == temp_end, "escape"] <- pg9_matrix[pg9_matrix$start == temp_start & pg9_matrix$end == temp_end, "escape"] + 1}
+  if(pg9_subset$escape[x] == 0){pg9_matrix[pg9_matrix$start == temp_start & pg9_matrix$end == temp_end, "escape"] <- pg9_matrix[pg9_matrix$start == temp_start & pg9_matrix$end == temp_end, "escape"] + 0}
+}
+
+pg9_heatmap <- ggplot() + geom_tile(data  = pg9_matrix, aes(x = factor(start, levels = amino_acid_factors), y = factor(end, levels = amino_acid_factors), fill = escape)) + labs(x = "Original amino acid", y = "Mutant amino acid")
+pg9_heatmap
+
+ggplot() + theme_bw() + scale_x_log10(limits = c(1e-21,1)) + 
+  geom_histogram(data = pg9_subset, aes(x = mutfracsurvive), bins = 100) + facet_grid(rows = vars(position))
+```
+
+```{r exporting data for other purposes}
+pgt121_matrix <- combined_sfr_missense_summary[,c("start","end")]; pgt121_matrix$escape <- NA; pgt121_matrix$escape <- as.numeric(pgt121_matrix$escape)
+
+table(pgt121_subset$start)/19
+sum(table(pgt121_subset$start)/19)
+
+for(x in 1:nrow(pgt121_subset)){
+  temp_start <- pgt121_subset$start[x]
+  temp_end <- pgt121_subset$end[x]
+  
+  if(is.na(pgt121_matrix[pgt121_matrix$start == temp_start & pgt121_matrix$end == temp_end, "escape"])){pgt121_matrix[pgt121_matrix$start == temp_start & pgt121_matrix$end == temp_end, "escape"] <- 0}
+  if(pgt121_subset$escape[x] == 1){pgt121_matrix[pgt121_matrix$start == temp_start & pgt121_matrix$end == temp_end, "escape"] <- pgt121_matrix[pgt121_matrix$start == temp_start & pgt121_matrix$end == temp_end, "escape"] + 1}
+  if(pgt121_subset$escape[x] == 0){pgt121_matrix[pgt121_matrix$start == temp_start & pgt121_matrix$end == temp_end, "escape"] <- pgt121_matrix[pgt121_matrix$start == temp_start & pgt121_matrix$end == temp_end, "escape"] + 0}
+}
+
+pgt121_heatmap <- ggplot() + geom_tile(data  = pgt121_matrix, aes(x = factor(start, levels = amino_acid_factors), y = factor(end, levels = amino_acid_factors), fill = escape)) + labs(x = "Original amino acid", y = "Mutant amino acid")
+pgt121_heatmap
+
+ggplot() + theme_bw() + scale_x_log10(limits = c(1e-21,1)) + 
+  geom_histogram(data = pgt121_subset, aes(x = mutfracsurvive), bins = 100) + facet_grid(rows = vars(position))
+```
+
+```{r exporting data for other purposes}
+pgt145_matrix <- combined_sfr_missense_summary[,c("start","end")]; pgt145_matrix$escape <- NA; pgt145_matrix$escape <- as.numeric(pgt145_matrix$escape)
+
+table(pgt145_subset$start)/19
+sum(table(pgt145_subset$start)/19)
+
+for(x in 1:nrow(pgt145_subset)){
+  temp_start <- pgt145_subset$start[x]
+  temp_end <- pgt145_subset$end[x]
+  
+  if(is.na(pgt145_matrix[pgt145_matrix$start == temp_start & pgt145_matrix$end == temp_end, "escape"])){pgt145_matrix[pgt145_matrix$start == temp_start & pgt145_matrix$end == temp_end, "escape"] <- 0}
+  if(pgt145_subset$escape[x] == 1){pgt145_matrix[pgt145_matrix$start == temp_start & pgt145_matrix$end == temp_end, "escape"] <- pgt145_matrix[pgt145_matrix$start == temp_start & pgt145_matrix$end == temp_end, "escape"] + 1}
+  if(pgt145_subset$escape[x] == 0){pgt145_matrix[pgt145_matrix$start == temp_start & pgt145_matrix$end == temp_end, "escape"] <- pgt145_matrix[pgt145_matrix$start == temp_start & pgt145_matrix$end == temp_end, "escape"] + 0}
+}
+
+pgt145_heatmap <- ggplot() + geom_tile(data  = pgt145_matrix, aes(x = factor(start, levels = amino_acid_factors), y = factor(end, levels = amino_acid_factors), fill = escape)) + labs(x = "Original amino acid", y = "Mutant amino acid")
+pgt145_heatmap
+
+ggplot() + theme_bw() + scale_x_log10(limits = c(1e-21,1)) + 
+  geom_histogram(data = pgt145_subset, aes(x = mutfracsurvive), bins = 100) + facet_grid(rows = vars(position))
+```
+
+```{r exporting data for other purposes}
+pgt151_matrix <- combined_sfr_missense_summary[,c("start","end")]; pgt151_matrix$escape <- NA; pgt151_matrix$escape <- as.numeric(pgt151_matrix$escape)
+
+table(pgt151_subset$start)/19
+sum(table(pgt151_subset$start)/19)
+
+for(x in 1:nrow(pgt151_subset)){
+  temp_start <- pgt151_subset$start[x]
+  temp_end <- pgt151_subset$end[x]
+  
+  if(is.na(pgt151_matrix[pgt151_matrix$start == temp_start & pgt151_matrix$end == temp_end, "escape"])){pgt151_matrix[pgt151_matrix$start == temp_start & pgt151_matrix$end == temp_end, "escape"] <- 0}
+  if(pgt151_subset$escape[x] == 1){pgt151_matrix[pgt151_matrix$start == temp_start & pgt151_matrix$end == temp_end, "escape"] <- pgt151_matrix[pgt151_matrix$start == temp_start & pgt151_matrix$end == temp_end, "escape"] + 1}
+  if(pgt151_subset$escape[x] == 0){pgt151_matrix[pgt151_matrix$start == temp_start & pgt151_matrix$end == temp_end, "escape"] <- pgt151_matrix[pgt151_matrix$start == temp_start & pgt151_matrix$end == temp_end, "escape"] + 0}
+}
+
+pgt151_heatmap <- ggplot() + geom_tile(data  = pgt151_matrix, aes(x = factor(start, levels = amino_acid_factors), y = factor(end, levels = amino_acid_factors), fill = escape)) + labs(x = "Original amino acid", y = "Mutant amino acid")
+pgt151_heatmap
+
+ggplot() + theme_bw() + scale_x_log10(limits = c(1e-21,1)) + 
+  geom_histogram(data = pgt151_subset, aes(x = mutfracsurvive), bins = 100) + facet_grid(rows = vars(position))
+```
+
+```{r Making a bit table of HIV escape mutations}
+vrc01_subset$label <- paste("vrc01_",vrc01_subset$start,vrc01_subset$position,sep="")
+vrc34_subset$label <- paste("vrc34_",vrc34_subset$start,vrc34_subset$position,sep="")
+bnc117_subset$label <- paste("bnc117_",bnc117_subset$start,bnc117_subset$position,sep="")
+e101074_subset$label <- paste("e101074_",e101074_subset$start,e101074_subset$position,sep="")
+pg9_subset$label <- paste("pg9_",pg9_subset$start,pg9_subset$position,sep="")
+pgt121_subset$label <- paste("pgt121_",pgt121_subset$start,pgt121_subset$position,sep="")
+pgt145_subset$label <- paste("pgt145_",pgt145_subset$start,pgt145_subset$position,sep="")
+pgt151_subset$label <- paste("pgt151_",pgt151_subset$start,pgt151_subset$position,sep="")
+e10e8_subset$label <- paste("e10e8_",e10e8_subset$start,e10e8_subset$position,sep="")
+
+hiv_escape_signatures <- rbind(vrc01_subset, vrc34_subset, bnc117_subset, e101074_subset, pg9_subset, pgt121_subset, pgt145_subset, pgt151_subset, e10e8_subset)
+
+hiv_escape_signatures_heatmap <- ggplot() + theme(axis.text.x = element_text(angle = -90, vjust = 0.5, hjust = 0)) + geom_tile(data  = hiv_escape_signatures, aes(x = label, y = factor(end, levels = amino_acid_factors), fill = escape)) + labs(x = "Antibody and HIV residue", y = "Mutant amino acid")
+hiv_escape_signatures_heatmap
+
+```
+
+
+
+
+
+
+
+
+
+```{r}
+## Update on 12/4/2020 to include SARS-CoV-2 and Influenza
+
+## Map escape mutation of SARS_CoV-2
+sars_cov2 <- read.csv(file = "data/Bloom_lab/SARS-CoV-2/media-1.csv"); colnames(sars_cov2) <- c("condition","position","start","end","mut_escape","site_escape","max_escape")
+sars_cov2_sfr <- read.csv(file = "data/SARS_CoV2_cutOff_0.5.csv", header = F, stringsAsFactors = F)
+names(sars_cov2_sfr)[1:1] <- "raw"
+sars_cov2_sfr <- sars_cov2_sfr %>% 
+  separate(raw,c("position","residue")) %>%
+  group_by(position)
+## There is no synonymous variant in sars_cov2
+sars_cov2$variant <- apply(sars_cov2[ , cols] , 1 , paste , collapse = ">" )
+sars_cov2 <- sars_cov2 %>% filter(condition == "rCR3022") %>% 
+  filter(position %in% sars_cov2_sfr$position) %>% mutate(count = 1)
+sars_cov2 <- sars_cov2 %>% group_by(variant) %>% summarize(escape = sum(mut_escape), count = sum(count), .groups = "drop") %>% mutate(pct_escape = escape / count * 100)
+compare_sars_cov2 <- merge(sars_cov2, combined_sfr_missense_summary_for_interaction[,c("variant","pct_tolerated")], by = "variant", all.x = T)
+compare_sars_cov2_plot <- ggplot() + theme_bw() + 
+  geom_point(data = compare_sars_cov2 %>% filter(count >= 5), aes(x = pct_tolerated, y = pct_escape, fill = pct_tolerated, size = count), shape = 21) +
+  geom_text_repel(data = compare_sars_cov2 %>% filter(pct_escape > 0 & count >= 5), aes(x = pct_tolerated, y = pct_escape, label = variant), color = "red", size = 1.5) + 
+  labs(title="Compare sars cov2, Angstroms  0.5") + 
+  scale_fill_gradient2(low = "white", mid = "grey70", high = "red", na.value = "black", midpoint = 70) +
+  scale_size_area()
+compare_sars_cov2_plot
+ggsave(file = "plots/Compare_sars_cov2_plot.pdf", compare_sars_cov2_plot, height = 6, width = 8)
+
+
+## Map escape mutaion of Influenza
+perth09 <- read.csv(file = "data/Bloom_lab/IAV/Perth09_antibody_FI6v3_median.csv"); colnames(perth09) <- c("position","start","end","mutfracsurvive")
+wsn1 <- read.csv(file = "data/Bloom_lab/IAV/WSN_antibody_FI6v3_median.csv"); colnames(wsn1) <- c("position","start","end","mutfracsurvive")
+wsn2 <- read.csv(file = "data/Bloom_lab/IAV/WSN_antibody_CR9114_median.csv"); colnames(wsn2) <- c("position","start","end","mutfracsurvive")
+
+perth09$mut_class <- NA
+for(x in 1:nrow(perth09)){
+  if(perth09$start[x] == perth09$end[x]){perth09$mut_class[x] <- "synonymous"}
+  if(perth09$start[x] != perth09$end[x]){perth09$mut_class[x] <- "missense"}
+}
+wsn1$mut_class <- NA
+for(x in 1:nrow(wsn1)){
+  if(wsn1$start[x] == wsn1$end[x]){wsn1$mut_class[x] <- "synonymous"}
+  if(wsn1$start[x] != wsn1$end[x]){wsn1$mut_class[x] <- "missense"}
+}
+wsn2$mut_class <- NA
+for(x in 1:nrow(wsn2)){
+  if(wsn2$start[x] == wsn2$end[x]){wsn2$mut_class[x] <- "synonymous"}
+  if(wsn2$start[x] != wsn2$end[x]){wsn2$mut_class[x] <- "missense"}
+}
+
+perth09_contact_list <- c(318,42,49,53,57) 
+wsn1_contact_list <- c(43,316,42,53,57)
+wsn2_contact_list <- c(28,30,290,41,42,45,46,56)
+perth09_contacts <- data.frame(subset(perth09, position %in% perth09_contact_list))
+wsn1_contacts <- data.frame(subset(wsn1, position %in% wsn1_contact_list))
+wsn2_contacts <- data.frame(subset(wsn2, position %in% wsn2_contact_list))
+
+perth09_synonymous_cutoff <- max((perth09 %>% filter(mut_class == "synonymous"))$mutfracsurvive)
+wsn1_synonymous_cutoff <- max((wsn1 %>% filter(mut_class == "synonymous"))$mutfracsurvive)
+wsn2_synonymous_cutoff <- max((wsn2 %>% filter(mut_class == "synonymous"))$mutfracsurvive)
+perth09_contacts$variant <- apply(perth09_contacts[ , cols] , 1 , paste , collapse = ">" )
+wsn1_contacts$variant <- apply(wsn1_contacts[ , cols] , 1 , paste , collapse = ">" )
+wsn2_contacts$variant <- apply(wsn2_contacts[ , cols] , 1 , paste , collapse = ">" )
+
+perth09_subset <- perth09_contacts %>% filter(mut_class == "missense") %>% mutate(count = 1, escape = 0)
+wsn1_subset <- wsn1_contacts %>% filter(mut_class == "missense") %>% mutate(count = 1, escape = 0)
+wsn2_subset <- wsn2_contacts %>% filter(mut_class == "missense") %>% mutate(count = 1, escape = 0)
+for(x in 1:nrow(perth09_subset)){if(perth09_subset$mutfracsurvive[x] > perth09_synonymous_cutoff){perth09_subset$escape[x] <- 1}}
+for(x in 1:nrow(wsn1_subset)){if(wsn1_subset$mutfracsurvive[x] > wsn1_synonymous_cutoff){wsn1_subset$escape[x] <- 1}}
+for(x in 1:nrow(wsn2_subset)){if(wsn2_subset$mutfracsurvive[x] > wsn2_synonymous_cutoff){wsn2_subset$escape[x] <- 1}}
+
+combined_influ <- rbind(perth09_subset[,c("variant","escape","count")],
+                        wsn1_subset[,c("variant","escape","count")],
+                        wsn2_subset[,c("variant","escape","count")])
+combined_influ <- combined_influ %>% group_by(variant) %>% summarize(escape = sum(escape), count = sum(count), .groups = "drop") %>% mutate(pct_escape = escape / count * 100)
+combined_influ_subset <- merge(combined_influ, combined_sfr_missense_summary_for_interaction[,c("variant","pct_tolerated")], by = "variant", all.x = T)
+
+combined_influ_plot <- ggplot() + theme_bw() + 
+  geom_point(data = combined_influ_subset %>% filter(count >= 5), aes(x = pct_tolerated, y = pct_escape, fill = pct_tolerated, size = count), shape = 21) +
+  geom_text_repel(data = combined_influ_subset %>% filter(pct_escape > 0 & count >= 5), aes(x = pct_tolerated, y = pct_escape, label = variant), color = "red", size = 1.5) + 
+  labs(title="Compare influenza, Angstroms  0.5") + 
+  scale_fill_gradient2(low = "white", mid = "grey70", high = "red", na.value = "black", midpoint = 70) +
+  scale_size_area()
+combined_influ_plot
+ggsave(file = "plots/Compare_influenza_plot.pdf", combined_influ_plot, height = 6, width = 8)
+```
+
+```{r Combining the HIV and influenza data}
+
+hiv_min <- combined_Bloom_data[,c("variant","escape","count")]; colnames(hiv_min) <- c("variant","hiv_escape","hiv_count")
+influenza_min <- combined_influ[,c("variant","escape","count")]; colnames(influenza_min) <- c("variant","flu_escape","flu_count")
+
+combined_virus_escape <- merge(hiv_min, influenza_min, by = "variant", all = T) %>% mutate(total_escape = hiv_escape + flu_escape, total_count = hiv_count + flu_count, pct_escape = total_escape / total_count * 100)
+combined_virus_escape2 <- merge(combined_virus_escape, combined_sfr_missense_summary_for_interaction[,c("variant","pct_tolerated")], by = "variant", all.x = T)
+
+combined_virus_plot <- ggplot() + theme_bw() + 
+  geom_point(data = combined_virus_escape2 %>% filter(total_count >= 5), aes(x = pct_tolerated, y = pct_escape, fill = pct_tolerated, size = total_count), shape = 21) +
+  geom_text_repel(data = combined_virus_escape2 %>% filter((pct_tolerated > 90 | pct_escape > 70) & total_count >= 5), aes(x = pct_tolerated, y = pct_escape, label = variant), color = "blue", size = 1.5) + 
+  labs(title="Including HIV and Flu data") + 
+  scale_fill_gradient2(low = "white", mid = "grey70", high = "red", na.value = "black", midpoint = 70) +
+  scale_size_area()
+combined_virus_plot
+ggsave(file = "plots/Combined_virus_plot.pdf", combined_virus_plot, height = 6, width = 8)
+```
+
+```{r Importing the polar bond data}
+### 1/26/2021
+### Map the relationship between polar bonds distance and their escape/abundance score
+
+library(readxl)
+e101074pbond <- read_excel("pymol/Pbond&distance/hiv/101074pbond.xlsx")
+e10e8pbond <- read_excel("pymol/Pbond&distance/hiv/10e8pbond.xlsx")
+bnc117pbond <- read_excel("pymol/Pbond&distance/hiv/3nc117pbond.xlsx")
+pg9pbond <- read_excel("pymol/Pbond&distance/hiv/pg9pbond.xlsx")
+pgt121pbond <- read_excel("pymol/Pbond&distance/hiv/pgt121pbond.xlsx")
+pgt145pbond <- read_excel("pymol/Pbond&distance/hiv/pgt145pbond.xlsx")
+pgt151pbond <- read_excel("pymol/Pbond&distance/hiv/pgt151pbond.xlsx")
+vrc01pbond <- read_excel("pymol/Pbond&distance/hiv/vrc01pbond.xlsx")
+vrc34pbond <- read_excel("pymol/Pbond&distance/hiv/vrc34pbond.xlsx")
+```
+
+
+```{r Anh's analysis}
+cols <- c("start", "end")
+e101074pbond <- merge(data.frame("position" = e101074pbond$Antibodies, "distance" = e101074pbond$Distance),
+      data.frame("position" = e101074$position, "start" = e101074$start, "end" = e101074$end), by = "position", all = T)
+e101074pbond <- e101074pbond %>% drop_na() 
+e101074pbond$variant <- apply(e101074pbond[ , cols] , 1 , paste , collapse = ">" )
+
+e10e8pbond <- merge(data.frame("position" = e10e8pbond$Antibodies, "distance" = e10e8pbond$Distance),
+      data.frame("position" = e10e8$position, "start" = e10e8$start, "end" = e10e8$end), by = "position", all = T)
+e10e8pbond <- e10e8pbond %>% drop_na() 
+e10e8pbond$variant <- apply(e10e8pbond[ , cols] , 1 , paste , collapse = ">" )
+
+bnc117pbond <- merge(data.frame("position" = bnc117pbond$Antibodies, "distance" = bnc117pbond$Distance),
+      data.frame("position" = bnc117$position, "start" = bnc117$start, "end" = bnc117$end), by = "position", all = T)
+bnc117pbond <- bnc117pbond %>% drop_na() 
+bnc117pbond$variant <- apply(bnc117pbond[ , cols] , 1 , paste , collapse = ">" )
+
+pg9pbond <- merge(data.frame("position" = pg9pbond$Antibodies, "distance" = pg9pbond$Distance),
+      data.frame("position" = pg9$position, "start" = pg9$start, "end" = pg9$end), by = "position", all = T)
+pg9pbond <- pg9pbond %>% drop_na() 
+pg9pbond$variant <- apply(pg9pbond[ , cols] , 1 , paste , collapse = ">" )
+
+pgt121pbond <- merge(data.frame("position" = pgt121pbond$Antibodies, "distance" = pgt121pbond$Distance),
+      data.frame("position" = pgt121$position, "start" = pgt121$start, "end" = pgt121$end), by = "position", all = T)
+pgt121pbond <- pgt121pbond %>% drop_na() 
+pgt121pbond$variant <- apply(pgt121pbond[ , cols] , 1 , paste , collapse = ">" )
+
+pgt145pbond <- merge(data.frame("position" = pgt145pbond$Antibodies, "distance" = pgt145pbond$Distance),
+      data.frame("position" = pgt145$position, "start" = pgt145$start, "end" = pgt145$end), by = "position", all = T)
+pgt145pbond <- pgt145pbond %>% drop_na() 
+pgt145pbond$variant <- apply(pgt145pbond[ , cols] , 1 , paste , collapse = ">" )
+
+pgt151pbond <- merge(data.frame("position" = pgt151pbond$Antibodies, "distance" = pgt151pbond$Distance),
+      data.frame("position" = pgt151$position, "start" = pgt151$start, "end" = pgt151$end), by = "position", all = T)
+pgt151pbond <- pgt151pbond %>% drop_na() 
+pgt151pbond$variant <- apply(pgt151pbond[ , cols] , 1 , paste , collapse = ">" )
+
+vrc01pbond <- merge(data.frame("position" = vrc01pbond$Antibodies, "distance" = vrc01pbond$Distance),
+      data.frame("position" = vrc01$position, "start" = vrc01$start, "end" = vrc01$end), by = "position", all = T)
+vrc01pbond <- vrc01pbond %>% drop_na() 
+vrc01pbond$variant <- apply(vrc01pbond[ , cols] , 1 , paste , collapse = ">" )
+
+vrc34pbond <- merge(data.frame("position" = vrc34pbond$Antibodies, "distance" = vrc34pbond$Distance),
+      data.frame("position" = vrc34$position, "start" = vrc34$start, "end" = vrc34$end), by = "position", all = T)
+vrc34pbond <- vrc34pbond %>% drop_na() 
+vrc34pbond$variant <- apply(vrc34pbond[ , cols] , 1 , paste , collapse = ">" )
+
+combined_HIVpbond <- rbind(e101074pbond[,c("distance","variant")],
+                        e10e8pbond[,c("distance","variant")],
+                        bnc117pbond[,c("distance","variant")],
+                        pg9pbond[,c("distance","variant")],
+                        pgt121pbond[,c("distance","variant")],
+                        pgt145pbond[,c("distance","variant")],
+                        pgt151pbond[,c("distance","variant")],
+                        vrc01pbond[,c("distance","variant")],
+                        vrc34pbond[,c("distance","variant")])
+
+combined_HIVpbond <- combined_HIVpbond %>% group_by(variant) %>% mutate(mean_distance = mean(distance, na.rm=TRUE))
+combined_HIVpbond2 <- merge(hiv_min, combined_HIVpbond, by = "variant", all = T) %>% mutate( pct_escape = hiv_escape / hiv_count * 100)
+combined_HIVpbond3 <- merge(combined_HIVpbond2, combined_sfr_missense_summary_for_interaction[,c("variant","pct_tolerated")], by = "variant", all.x = T)
+
+combined_HIVpbond_plot <- ggplot() + theme_bw() + 
+  geom_point(data = combined_HIVpbond3, aes(x = pct_escape, y = mean_distance, fill = pct_tolerated, size = hiv_count), shape = 21) +
+  geom_text_repel(data = combined_HIVpbond3 %>% filter((pct_tolerated > 90 | pct_escape > 70) & hiv_count >= 5), aes(x = pct_escape, y = mean_distance, label = variant), color = "blue", size = 1.5) + 
+  labs(title="HIV polar bond distance") + 
+  scale_fill_gradient2(low = "white", mid = "grey70", high = "red", na.value = "black", midpoint = 70) +
+  scale_size_area()
+ggsave(file = "plots/combined_HIVpbond_plot.pdf", combined_HIVpbond_plot, height = 6, width = 8)
+```
+
+
+```{r}
+## So you're making some critical mistakes in the above analysis. Think about what information is being given by the interaction data. It is at the positional level (eg. F159) per antibody (eg. e101074). You were doing things at the variant level, and ignoring the position. Furthermore, you were ignoring the antibody. Here's my version of an analysis here.
+
+pbond_columns_to_keep <- c("position","start","distance")
+
+HIV_pbond_positions <- rbind(e101074pbond[,pbond_columns_to_keep] %>% mutate(antibody = "e101074"),
+                        e10e8pbond[,pbond_columns_to_keep] %>% mutate(antibody = "e10e8"),
+                        bnc117pbond[,pbond_columns_to_keep] %>% mutate(antibody = "bnc117"),
+                        pg9pbond[,pbond_columns_to_keep] %>% mutate(antibody = "pg9"),
+                        pgt121pbond[,pbond_columns_to_keep] %>% mutate(antibody = "pgt121"),
+                        pgt145pbond[,pbond_columns_to_keep] %>% mutate(antibody = "pgt145"),
+                        pgt151pbond[,pbond_columns_to_keep] %>% mutate(antibody = "pgt151"),
+                        vrc01pbond[,pbond_columns_to_keep] %>% mutate(antibody = "vrc01"),
+                        vrc34pbond[,pbond_columns_to_keep] %>% mutate(antibody = "vrc34")) %>% distinct() %>% mutate(residue_antibody = paste(start,position,"_",antibody,sep=""))
+
+hiv_escape_signatures$antibody <- sapply(strsplit(hiv_escape_signatures$label, "_"), "[[", 1)
+
+hiv_escape_signatures_pct_escape <- hiv_escape_signatures %>% group_by(position, start, antibody) %>% summarize(total_escape = sum(escape), total_assessed = sum(count), .groups="drop") %>% mutate(pct_escape = total_escape / total_assessed * 100) %>% mutate(residue_antibody = paste(start,position,"_",antibody,sep=""))
+
+hiv_escape_distance <- merge(hiv_escape_signatures_pct_escape, HIV_pbond_positions[,c("residue_antibody","distance")], by = "residue_antibody", all = T)
+
+# Ok, the above is weird in that there is very little overlap between the datasets. Let's see if I can confirm this or not.
+### First going back to the contact list from earlier
+hiv_contact_df <- rbind(data.frame("position" = c(199,278,279,280,365,368,459), "antibody" = "vrc01"),
+data.frame("position" = c(207,278,279,280,365,461,463,465,469) ,"antibody" = "bnc117"),
+data.frame("position" = c(672,683), "antibody" = "e10e8"),
+data.frame("position" = c(325,327), "antibody" = "e101074"),
+data.frame("position" = c(160,162,164,165,166,167,169,170,171,172,173,223,242), "antibody" = "pg9"),
+data.frame("position" = c(135,325,327), "antibody" = "pgt121"),
+data.frame("position" = c(166,169), "antibody" = "pgt145"),
+data.frame("position" = c(519,542,550,554,640,647), "antibody" = "pgt151"),
+data.frame("position" = c(229,513,515,516,517), "antibody" = "vrc34"))
+
+HIV_pbond_positions$position_antibody <- paste(HIV_pbond_positions$position,"_",HIV_pbond_positions$antibody,sep="")
+HIV_pbond_positions$pbond <- 1
+
+hiv_contact_df$position_antibody <- paste(hiv_contact_df$position,"_",hiv_contact_df$antibody,sep="")
+hiv_contact_df$contact <- 1
+
+contact_and_pbond_overlap <- merge(HIV_pbond_positions[,c("position_antibody","pbond")], hiv_contact_df[,c("position_antibody","contact")], all = T)
+```
+
